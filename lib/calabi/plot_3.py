@@ -1,18 +1,37 @@
+# @see http://www.tanjiasi.com/surface-design/
+
 import math, cmath
+import rhinoscriptsyntax as rs
 import Rhino.Geometry.Point3d as rhp3
 
 I = complex(0.0, 1.0)
-n = int(DimensionJIASI)
-Alpha = (float(Rotation) + 1) * math.pi
+# Range 1..10
+# n = int(DimensionIASI)
+n = 3
+# Range 0.0..1.0
+# Alpha = (float(Rotation) + 1) * math.pi
+Alpha = (float(1.0) + 1) * math.pi
 Points = []
 
 def qrange(start, stop = None, step = 1):
     # if start is missing it defaults to zero, somewhat tricky
-    start, stop = (0, start) if stop is None else (start, stop)
+    if stop == None:
+        start, stop = 0, start
     # allow for decrement
-    while start > stop if step < 0 else start < stop:
-        yield start # makes this a generator for new start value
-        start += step
+    if step < 0:
+        while start > stop:
+            yield start   # makes this a generator for new start value
+            start += step
+    else:
+        while start < stop:
+            yield start
+            start += step
+
+    # start, stop = (0, start) if stop is None else (start, stop)
+    # # allow for decrement
+    # while start > stop if step < 0 else start < stop:
+    #     yield start # makes this a generator for new start value
+    #     start += step
 
 def Complex_u1(a, b):
     m1 = complex(a, b)
@@ -43,7 +62,7 @@ def Complex_z2(a, b, n, k):
     return m2 * u_2
 
 def ParametricPlot3D(step = 0.1):
-    maxB = math.pi / 2 + step
+    maxB = (math.pi / 2) + step
     for k1 in range(n):
         for k2 in range(n):
             for a in qrange(-1, 1, step):
@@ -53,7 +72,8 @@ def ParametricPlot3D(step = 0.1):
                     x_new = z1.real
                     y_new = z2.real
                     z_new = math.cos(Alpha) * z1.imag + math.sin(Alpha) * z2.imag
-                    Points.append(rhp3(x_new, y_new, z_new))
+                    point = rhp3(x_new, y_new, z_new)
+                    Points.append(point)
     return Points
 
 a = ParametricPlot3D()

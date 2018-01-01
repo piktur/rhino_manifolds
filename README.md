@@ -10,16 +10,25 @@
 
 ### Text Editor
 
-Preferred [Atom](https://atom.io/)
+[Atom](https://atom.io/)
+Enable `Python` syntax and install [`linter-mathematica`](https://atom.io/packages/linter-mathematica) and [`rhino-python`](https://atom.io/packages/rhino-python) Syntax Packages
 
-### Python
+### [Sketchup]()
+
+### [Rhino](http://www.rhino3d.com/download/rhino-for-mac/5/wip)
+
+### [Grasshopper]()
+
+## Python
 
 1. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/lib/calabi/plot_3.py)
   [See](http://www.tanjiasi.com/surface-design/)
 
-### Ruby
+## Ruby
 
 ## Snippets
+
+### Rhino
 
 ### Mathematica
 
