@@ -1,0 +1,71 @@
+Manipulate[
+  Show[
+    calabi[0, 0, 0, alpha, 0, clr],
+    ViewPoint -> {-1.4, 0, 1.4},
+    Lighting ->
+    If[
+      clr,
+      {
+        {"Ambient", GrayLevel[.5]},
+        {"Directional", White, ImageScaled@{0, 0, 2}}
+      },
+      {
+        {"Ambient", GrayLevel[.25]},
+        {"Directional", RGBColor[0.5, .5, 1],ImageScaled@{0, 1, 0}},
+        {"Directional", RGBColor[1, .5, 1],ImageScaled@{1, -1, 0}},
+        {"Directional", RGBColor[0.5, 1, .5],ImageScaled@{-1, -1, 0}}
+      }
+    ],
+    PlotRange -> 1.2,
+    Boxed -> False,
+    Axes -> False,
+    SphericalRegion -> True,
+    ImageSize -> {450, 450},
+    ViewAngle -> \[Pi]/4.5
+  ],
+  {{alpha, \[Pi]/4, "projection angle"}, 0, 2 Pi},
+  {{clr, False, "color code surface"}, {True, False}},
+  Initialization:> {
+    n = 5;
+
+    u1[a_, b_] := .5 (E ^ (a + I * b) + E ^ (-a - I * b));
+    u2[a_, b_] := .5 (E ^ (a + I * b) - E ^ (-a - I * b));
+
+    z1k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u1[a, b] ^ (2.0 / n);
+    z2k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u2[a, b] ^ (2.0 / n);
+
+    calabi[x_, y_, z_, \[Alpha]_, t_, c_] := Table[
+      With[
+        { alpha = \[Alpha] - t },
+        ParametricPlot3D[
+          Evaluate@{
+            Re[z1k[a, b, n, k1]] + x,
+            Re[z2k[a, b, n, k2]] + y,
+            Cos[alpha] * Im[z1k[a, b, n, k1]] +
+            Sin[alpha] * Im[z2k[a, b, n, k2]] + z
+          },
+          {a, -1, 1},
+          {b, 0, \[Pi] / 2},
+          Boxed -> False,
+          Axes -> False,
+          PlotPoints -> 25,
+          PlotStyle -> If[
+            c,
+            RGBColor@{
+              If[k1 == 0 && k2 == 0, 0, Rescale[k1, {0, n - 1}]],
+              If[k1 == 0 && k2 == 0, 0, Rescale[k2, {0, n - 1}]],
+              If[k1 == 0 && k2 == 0, 1, 0],
+            },
+            {RGBColor[.5, .5, 1], Specularity[White, 128]}
+          ],
+          MaxRecursion -> 0,
+          PerformanceGoal ->"Speed",
+          Mesh ->None
+        ]
+      ],
+      {k1, 0, n - 1},
+      {k2, 0, n - 1}
+    ];
+  },
+  SynchronousInitialization -> False
+]

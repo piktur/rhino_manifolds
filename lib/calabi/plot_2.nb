@@ -1,11 +1,11 @@
-u1[a_, b_] := .5 (E ^ (a + I * b) + E ^ (-a - I * b))
-u2[a_, b_] := .5 (E ^ (a + I * b) - E ^ (-a - I * b))
+(*Dimensions - min: 1, max: 8*)
+n = 3;
 
-z1k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u1[a, b] ^ (2.0 / n)
-z2k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u2[a, b] ^ (2.0 / n)
+u1[a_, b_] := .5 (E ^ (a + I * b) + E ^ (-a - I * b));
+u2[a_, b_] := .5 (E ^ (a + I * b) - E ^ (-a - I * b));
 
-(*Dimensions*)
-n=3;
+z1k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u1[a, b] ^ (2.0 / n);
+z2k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u2[a, b] ^ (2.0 / n);
 
 calabi[x_, y_, z_, \[Alpha]_, t_, c_] := Table[
   With[
