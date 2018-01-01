@@ -1,0 +1,28 @@
+u1[a_, b_] := .5 (E ^ (a + I * b) + E ^ (-a - I * b))
+u2[a_, b_] := .5 (E ^ (a + I * b) - E ^ (-a - I * b))
+
+z1k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u1[a, b] ^ (2.0 / n)
+z2k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u2[a, b] ^ (2.0 / n)
+
+(*Dimensions*)
+n=3;
+
+calabi[x_, y_, z_, \[Alpha]_, t_, c_] := Table[
+  With[
+    { alpha = \[Alpha] - t },
+    ParametricPlot3D[
+      Evaluate@{
+        Re[z1k[a, b, n, k1]] + x,
+        Re[z2k[a, b, n, k2]] + y,
+        Cos[alpha] * Im[z1k[a, b, n, k1]] +
+        Sin[alpha] * Im[z2k[a, b, n, k2]] + z
+      },
+      {a, -1, 1},
+      {b, 0, \[Pi] / 2}
+    ]
+  ],
+  {k1, 0, n - 1},
+  {k2, 0, n - 1}
+]
+
+model=Show[calabi[0, 0, 0, 0, Pi / 4, False], PlotRange->All]
