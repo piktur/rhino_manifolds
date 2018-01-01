@@ -14,14 +14,19 @@ Preferred [Atom](https://atom.io/)
 
 ### Python
 
-### Ruby
+1. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/lib/calabi/plot_3.py)
+  [See](http://www.tanjiasi.com/surface-design/)
 
+### Ruby
 
 ## Snippets
 
-1. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/lib/calabi/parametric_plot_3d.nb)
-  [See](http://kaurov.com/wordpress/?p=1246)
+### Mathematica
 
+1. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/lib/calabi/plot_1.nb)
+  [See](http://demonstrations.wolfram.com/CalabiYauSpace/)
+2. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/lib/calabi/plot_2.nb)
+  [See](http://kaurov.com/wordpress/?p=1246)
 
 ## SketchUp
 
@@ -32,13 +37,15 @@ Preferred [Atom](https://atom.io/)
 
 [Calabi](https://3dwarehouse.sketchup.com/model/73d1a448bc4c446d8389babcf188871/Manifolds)
 
-```
-Explode
-Select All
-Artisan > Subdivide & Soften
-Window > Ruby Console
+```ruby
+# Explode
+# Select All
+# Artisan > Subdivide & Soften
+# Window > Ruby Console
 
 Sketchup.active_model.selection
   .select { |e| e.is_a?(Sketchup::Edge) && e.soft? } # Select soft edges
   .each { |e| e.soft = false } # Disable softening
 ```
+
+Modify appearance with `Window > Styles`
