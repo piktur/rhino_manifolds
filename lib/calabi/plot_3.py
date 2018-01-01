@@ -1,16 +1,18 @@
+# Renders Grasshopper redundant, simply execute this script from Rhino > RunPythonScript
 # @see http://www.tanjiasi.com/surface-design/
+# @see http://www.grasshopper3d.com/video/calabi-yau-manifold-in-grasshopper
 
 import math, cmath
 import rhinoscriptsyntax as rs
-import Rhino.Geometry.Point3d as rhp3
+import Rhino.Geometry.Point3d as rp3d
+import Rhino.Collections.Point3dList as rp3dl
 
-I = complex(0.0, 1.0)
 # Range 1..10
-# n = int(DimensionIASI)
 n = 3
 # Range 0.0..1.0
-# Alpha = (float(Rotation) + 1) * math.pi
 Alpha = (float(1.0) + 1) * math.pi
+
+I = complex(0.0, 1.0)
 Points = []
 
 def qrange(start, stop = None, step = 1):
@@ -61,10 +63,13 @@ def Complex_z2(a, b, n, k):
     m2 = cmath.exp(m_2)
     return m2 * u_2
 
-def ParametricPlot3D(step = 0.1):
+# @param [float] step
+#   Control points density
+def ParametricPlot3D(step = 0.01):
     maxB = (math.pi / 2) + step
     for k1 in range(n):
         for k2 in range(n):
+            points_list = rp3dl()
             for a in qrange(-1, 1, step):
                 for b in qrange(0, maxB, step):
                     z1 = Complex_z1(a, b, n, k1)
@@ -72,8 +77,21 @@ def ParametricPlot3D(step = 0.1):
                     x_new = z1.real
                     y_new = z2.real
                     z_new = math.cos(Alpha) * z1.imag + math.sin(Alpha) * z2.imag
-                    point = rhp3(x_new, y_new, z_new)
-                    Points.append(point)
+                    point = rp3d(x_new, y_new, z_new)
+                    # Points.append(point)
+                    points_list.Add(point)
+
+            Points.append(points_list)
+
+            points_list = None
+
+    for points in Points:
+        for point in points:
+            rs.AddPoint(point)
+
     return Points
 
-a = ParametricPlot3D()
+rs.EnableRedraw(True);
+
+if __name__ == "__main__":
+    ParametricPlot3D()
