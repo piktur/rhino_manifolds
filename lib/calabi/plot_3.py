@@ -4,15 +4,24 @@
 
 import math, cmath
 import rhinoscriptsyntax as rs
-import Rhino.Geometry.Point3d as rp3d
-import Rhino.Collections.Point3dList as rp3dl
+import Rhino.Geometry.Point3d as Point3d
+import Rhino.Collections.Point3dList as Point3dList
 
+# Get User input
 # Range 1..10
-n = 3
+# @return [Int] 1
+n = rs.GetInteger("n", 1, 1)
+
 # Range 0.0..1.0
-Alpha = (float(1.0) + 1) * math.pi
+# @return [Float] 1.0
+Alpha = (rs.GetReal("Rotation", 1.0, 1.0) + 1) * math.pi
+
+# @return [Float] 0.1
+Density = rs.GetReal("Density", 0.1, 0.001)
 
 I = complex(0.0, 1.0)
+
+# @return [List<Rhino.Collections.Point3dList>]
 Points = []
 
 def qrange(start, stop = None, step = 1):
@@ -28,12 +37,6 @@ def qrange(start, stop = None, step = 1):
         while start < stop:
             yield start
             start += step
-
-    # start, stop = (0, start) if stop is None else (start, stop)
-    # # allow for decrement
-    # while start > stop if step < 0 else start < stop:
-    #     yield start # makes this a generator for new start value
-    #     start += step
 
 def Complex_u1(a, b):
     m1 = complex(a, b)
@@ -65,31 +68,22 @@ def Complex_z2(a, b, n, k):
 
 # @param [float] step
 #   Control points density
-def ParametricPlot3D(step = 0.01):
+def ParametricPlot3D(step = 0.5):
+    pointsList = Point3dList()
     maxB = (math.pi / 2) + step
     for k1 in range(n):
         for k2 in range(n):
-            points_list = rp3dl()
             for a in qrange(-1, 1, step):
                 for b in qrange(0, maxB, step):
+                    print b
                     z1 = Complex_z1(a, b, n, k1)
                     z2 = Complex_z2(a, b, n, k2)
                     x_new = z1.real
                     y_new = z2.real
                     z_new = math.cos(Alpha) * z1.imag + math.sin(Alpha) * z2.imag
-                    point = rp3d(x_new, y_new, z_new)
-                    # Points.append(point)
-                    points_list.Add(point)
+                    pointsList.Add(Point3d(x_new, y_new, z_new))
 
-            Points.append(points_list)
-
-            points_list = None
-
-    for points in Points:
-        for point in points:
-            rs.AddPoint(point)
-
-    return Points
+    rs.AddPoints(pointsList)
 
 rs.EnableRedraw(True);
 
