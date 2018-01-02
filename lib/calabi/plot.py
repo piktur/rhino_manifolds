@@ -2,10 +2,14 @@
 # @see http://www.tanjiasi.com/surface-design/
 # @see http://www.grasshopper3d.com/video/calabi-yau-manifold-in-grasshopper
 
+import importlib
 import math, cmath
 import rhinoscriptsyntax as rs
 import Rhino.Geometry.Point3d as Point3d
 import Rhino.Collections.Point3dList as Point3dList
+
+# Import local modules
+import export
 
 # Get User input
 # Range 1..10
@@ -14,29 +18,24 @@ n = rs.GetInteger("n", 1, 1)
 
 # Range 0.0..1.0
 # @return [Float] 1.0
-Alpha = (rs.GetReal("Rotation", 1.0, 1.0) + 1) * math.pi
+Rotation = rs.GetReal("Rotation", 1.0, 1.0)
 
 # @return [Float] 0.1
-Density = rs.GetReal("Density", 0.1, 0.001)
+Density = float(rs.GetReal("Density", 0.1, 0.001))
 
+Alpha = (float(Rotation) + 1) * math.pi
 I = complex(0.0, 1.0)
 
-# @return [List<Rhino.Collections.Point3dList>]
-Points = []
+# @return [Rhino.Collections.Point3dList]
+Points = Point3dList()
 
 def qrange(start, stop = None, step = 1):
     # if start is missing it defaults to zero, somewhat tricky
-    if stop == None:
-        start, stop = 0, start
+    start, stop = (0, start) if stop is None else (start, stop)
     # allow for decrement
-    if step < 0:
-        while start > stop:
-            yield start   # makes this a generator for new start value
-            start += step
-    else:
-        while start < stop:
-            yield start
-            start += step
+    while start > stop if step < 0 else start < stop:
+        yield start # makes this a generator for new start value
+        start += step
 
 def Complex_u1(a, b):
     m1 = complex(a, b)
@@ -68,24 +67,25 @@ def Complex_z2(a, b, n, k):
 
 # @param [float] step
 #   Control points density
-def ParametricPlot3D(step = 0.5):
-    pointsList = Point3dList()
+def ParametricPlot3D(step = 0.1):
     maxB = (math.pi / 2) + step
     for k1 in range(n):
         for k2 in range(n):
             for a in qrange(-1, 1, step):
                 for b in qrange(0, maxB, step):
-                    print b
                     z1 = Complex_z1(a, b, n, k1)
                     z2 = Complex_z2(a, b, n, k2)
                     x_new = z1.real
                     y_new = z2.real
                     z_new = math.cos(Alpha) * z1.imag + math.sin(Alpha) * z2.imag
-                    pointsList.Add(Point3d(x_new, y_new, z_new))
+                    Points.Add(Point3d(x_new, y_new, z_new))
+    return Points
 
-    rs.AddPoints(pointsList)
+def Run():
+    ParametricPlot3D(Density) # Calculate points
+    rs.AddPoints(Points)      # Render points
 
 rs.EnableRedraw(True);
 
 if __name__ == "__main__":
-    ParametricPlot3D()
+    Run()
