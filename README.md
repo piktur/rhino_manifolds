@@ -2,49 +2,40 @@
 
 [Snippets](https://bitbucket.org/kunst_dev/snippets)
 
-## Resources
-
-[Wolfram Programming Lab](https://lab.open.wolframcloud.com/app/view/newNotebook?ext=nb) provides free Mathematica sandpit.
-
 ## Tools
 
 ### Text Editor
 
-[Atom](https://atom.io/)
-Enable `Python` syntax and install [`linter-mathematica`](https://atom.io/packages/linter-mathematica) and [`rhino-python`](https://atom.io/packages/rhino-python) Syntax Packages
+Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-mathematica`](https://atom.io/packages/linter-mathematica) and [`rhino-python`](https://atom.io/packages/rhino-python) Syntax Packages.
+
+### Wolfram
+
+[Wolfram Programming Lab](https://lab.open.wolframcloud.com/app/view/newNotebook?ext=nb) provides free Mathematica sandpit.
 
 ### [Sketchup]()
 
 ### [Rhino](http://www.rhino3d.com/download/rhino-for-mac/5/wip)
 
-### [Grasshopper]()
+---
 
-## Python
-
-1. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/lib/calabi/plot_3.py)
-  [See](http://www.tanjiasi.com/surface-design/)
-
-## Ruby
-
-## Snippets
+## Examples
 
 ### Rhino
 
+1. [Points](/src/master/lib/calabi/plot_3.py) [[Source](http://www.tanjiasi.com/surface-design/)]
+
 ### Mathematica
 
-1. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/lib/calabi/plot_1.nb)
-  [See](http://demonstrations.wolfram.com/CalabiYauSpace/)
-2. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/lib/calabi/plot_2.nb)
-  [See](http://kaurov.com/wordpress/?p=1246)
+1. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/examples/mathematica/plot_1.nb)  [[Source](http://demonstrations.wolfram.com/CalabiYauSpace/)]
+2. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/examples/mathematica/plot_2.nb)  [[Source](http://kaurov.com/wordpress/?p=1246)]
 
-## SketchUp
+### SketchUp
 
-[Sketchup Ruby Docs](http://ruby.sketchup.com/Sketchup/)
-[Artisan](http://artisan4sketchup.com/)
+[Ruby API Documentation](http://ruby.sketchup.com/Sketchup/)
 
-### Examples
+Install [Artisan](http://artisan4sketchup.com/) plugin.
 
-[Calabi](https://3dwarehouse.sketchup.com/model/73d1a448bc4c446d8389babcf188871/Manifolds)
+1. [Calabi](https://3dwarehouse.sketchup.com/model/73d1a448bc4c446d8389babcf188871/Manifolds)
 
 ```ruby
 # Explode
