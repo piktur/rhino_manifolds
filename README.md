@@ -22,12 +22,12 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
 
 ### Rhino
 
-1. [Points](/src/master/lib/calabi/plot_3.py) [[Source](http://www.tanjiasi.com/surface-design/)]
+1. [Points](/lib/calabi/plot_3.py) [[Source](http://www.tanjiasi.com/surface-design/)]
 
 ### Mathematica
 
-1. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/examples/mathematica/plot_1.nb)  [[Source](http://demonstrations.wolfram.com/CalabiYauSpace/)]
-2. [Wolfram Mathematica - Calabi Yau Manifold](/src/master/examples/mathematica/plot_2.nb)  [[Source](http://kaurov.com/wordpress/?p=1246)]
+1. [Wolfram Mathematica - Calabi Yau Manifold](/examples/mathematica/plot_1.nb)  [[Source](http://demonstrations.wolfram.com/CalabiYauSpace/)]
+2. [Wolfram Mathematica - Calabi Yau Manifold](/examples/mathematica/plot_2.nb)  [[Source](http://kaurov.com/wordpress/?p=1246)]
 
 ### SketchUp
 
