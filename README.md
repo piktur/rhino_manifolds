@@ -49,3 +49,63 @@ Sketchup.active_model.selection
 ```
 
 Modify appearance with `Window > Styles`
+
+## Browsing Rhino Plugins source
+
+[mcneel/rhinocommon](https://github.com/mcneel/rhinocommon)
+
+Rhino application files are accessible from: `/Applications/RhinoWIP.app/Contents/Resources/ManagedPlugIns`
+
+
+## Math
+
+`C#` math functions transposed to `Python`. These function seem to exist because there is no `Complex` type in `C#`.
+
+```python
+  import math, cmath
+
+  def Abs(n):
+      n = complex(n)
+      return math.sqrt((n.real * n.real) + (n.imag * n.imag))
+
+
+  def Arg(n):
+      n = complex(n)
+      if Abs(n) != 0:
+          return cmath.phase(n)  # equivalent to `math.atan2(n.imag, n.real)`
+      else:
+          return 0
+
+  # Use complex(0,1) ** complex(0,1)
+  def Pow(n, x):
+      n = Abs(n)
+      if n != 0:
+          n1 = x * Arg(n)
+          return complex((n ** x) * cos(n1), (n ** x) * sin(n1))
+      else:
+          return complex(0, 0)
+
+
+  def Mult(n, x):
+      '''
+      Equivalent to `complex(real, imag) * complex(real, imag)`
+      '''
+      r = (n.real * x.real) - (n.imag * x.imag)
+      i = (n.real * x.imag) + (n.imag * x.real)
+      return complex(r, i)
+```
+
+```python
+  def Complex_z1(a, b, n, k):
+      i = complex(0.0, 1.0)
+      u1 = Pow(Complex_u1(a, b), (2.0 / n))
+      m1 = cmath.exp(i * ((2.0 * pi * k) / n))
+      return m1 * u1
+
+
+  def Complex_z2(a, b, n, k):
+      i = complex(0.0, 1.0)
+      u2 = Pow(Complex_u2(a, b), (2.0 / n))
+      m2 = cmath.exp(i * ((2.0 * pi * k) / n))
+      return m2 * u2
+```
