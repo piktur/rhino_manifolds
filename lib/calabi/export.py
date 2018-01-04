@@ -26,6 +26,10 @@ Export Points to File. Useful in cases where we might wish to generate models fr
 
 Apparently Top View + Export Selected is better suited to line export [Source](https://discourse.mcneel.com/t/exporting-in-eps-ai-format/37015)
 
+[](http://developer.rhino3d.com/samples/#viewports-and-views-1)
+[](http://developer.rhino3d.com/samples/rhinocommon/add-layout/)
+[](http://developer.rhino3d.com/samples/cpp/two-view-layout/)
+
 `RhinoDLR_Python.rhp/RssLib/rhinoscript/userinterface.py@1140` `SaveFileName()`
 [Example](http://developer.rhino3d.com/samples/rhinopython/export-points/)
 

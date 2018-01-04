@@ -2,7 +2,9 @@
 Replaces Grasshopper workflow -- execute via `RunPythonScript`
 
 [](http://www.tanjiasi.com/surface-design/)
-[](http://www.grasshopper3d.com/video/calabi-yau-manifold-in-grasshopper)
+[](http://www.food4rhino.com/app/calabi-yau-manifold)
+[Python Standard Library - math](https://docs.python.org/2/library/math.html)
+[Python Standard Library - cmath](https://docs.python.org/2/library/cmath.html)
 '''
 
 import importlib
@@ -11,7 +13,7 @@ from math import cos, sin, pi
 import rhinoscriptsyntax as rs
 import scriptcontext
 import System.Guid
-from Rhino.Geometry import Point3d, Mesh
+from Rhino.Geometry import Point3d, Mesh, NurbsCurve
 # from Rhino.Collections import Point3dList
 
 # Import local modules
@@ -22,16 +24,16 @@ class Builder:
     def __init__(self, cy):
         self.CalabiYau = cy
 
-    def Before(self):
+    def Before(self, *args):
         return
 
-    def Build(self):
+    def Build(self, *args):
         return
 
-    def After(self):
+    def After(self, *args):
         return
 
-    def Render(self):
+    def Render(self, *args):
         return
 
 
@@ -43,12 +45,6 @@ class PointCloudBuilder(Builder):
     def Render(self):
         for point in self.CalabiYau.Points:
             rs.AddPoint(point)
-
-
-class SurfaceBuilder(Builder):
-    def __init__(self, cy):
-        Builder.__init__(self, cy)
-        self.CalabiYau = cy
 
 
 class MeshBuilder(Builder):
@@ -101,6 +97,25 @@ class MeshBuilder(Builder):
             return
 
 
+class SurfaceBuilder(Builder):
+    def __init__(self, cy):
+        Builder.__init__(self, cy)
+        self.CalabiYau = cy
+
+
+class CurveBuilder(Builder):
+    def __init__(self, cy):
+        Builder.__init__(self, cy)
+        self.CalabiYau = cy
+
+    def Render(self):
+        # curve = NurbsCurve.Create(False, 1, self.CalabiYau.Points)
+        # # surface = Rhino.Geometry.NurbsCurve.CreateFromPoints(pointslist, )
+        #
+        # if scriptcontext.doc.Objects.AddCurve(curve) != System.Guid.Empty:
+        scriptcontext.doc.Views.Redraw()
+
+
 class CalabiYau:
     '''
     Attributes
@@ -111,6 +126,7 @@ class CalabiYau:
     i : complex
     Alpha : float
         [0.0..1.0]
+        Rotation
     Step : float
         [0.01..0.1]
         Sample rate
@@ -119,10 +135,10 @@ class CalabiYau:
     Points : list<Rhino.Geometry.Point3d>
     Meshes : list<Rhino.Geometry.Mesh>
     '''
-    def __init__(self, n=1, deg=1.0, step=0.1, scale=1):
+    def __init__(self, n=int(1), deg=float(1.0), step=float(0.1), scale=int(1)):
         self.n = n
         self.I = complex(0.0, 1.0)
-        self.Alpha = deg
+        self.Alpha = deg * pi
         self.Step = step
         self.Scale = scale
         self.Points = []
@@ -131,6 +147,7 @@ class CalabiYau:
             1: self.PointCloudBuilder,
             2: self.MeshBuilder,
             3: self.SurfaceBuilder,
+            4: self.CurveBuilder
         }
 
     def __ops__(self, builder):
@@ -149,6 +166,9 @@ class CalabiYau:
 
     def SurfaceBuilder(self):
         return self.__ops__(SurfaceBuilder(self))
+
+    def CurveBuilder(self):
+        return self.__ops__(CurveBuilder(self))
 
     def Build(self, output=2):
         '''
@@ -174,13 +194,13 @@ class CalabiYau:
         return (m1 - m2) * 0.5
 
     def ComplexZ1(self, a, b, n, k):
-        u1 = self.ComplexU1(a, b) ** complex(2.0 / n)
-        m1 = cmath.exp(self.I * complex((2.0 * pi * k) / n))
+        u1 = self.ComplexU1(a, b) ** (2.0 / n)
+        m1 = cmath.exp(self.I * ((2.0 * pi * k) / n))
         return m1 * u1
 
     def ComplexZ2(self, a, b, n, k):
-        u2 = self.ComplexU2(a, b) ** complex(2.0 / n)
-        m2 = cmath.exp(self.I * complex((2.0 * pi * k) / n))
+        u2 = self.ComplexU2(a, b) ** (2.0 / n)
+        m2 = cmath.exp(self.I * ((2.0 * pi * k) / n))
         return m2 * u2
 
     def ParametricPlot3D(self, builder):
@@ -224,13 +244,18 @@ class CalabiYau:
                 for op in builder['after']:
                     op()
 
+def GenerateMatrix(inc=15):
+    '''
+    TODO Generate multiple manifolds and arrange in grid
+    '''
+
 
 def Run():
     n = rs.GetInteger('n', 1, 1)
     Alpha = rs.GetReal('Degree', 1.0, 0.0)
     Density = rs.GetReal('Density', 0.1, 0.01)
     Scale = rs.GetInteger('Scale', 100, 1)
-    Type = rs.GetInteger('Type', 2, 1, 3)
+    Type = rs.GetInteger('Type', 2, 1, 4)
 
     CalabiYau(n, Alpha, Density, Scale).Build(Type)
 
