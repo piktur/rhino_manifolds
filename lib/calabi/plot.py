@@ -23,23 +23,15 @@ class Builder:
         self.CalabiYau = cy
 
     def Before(self):
-        '''
-        '''
         return
 
     def Build(self):
-        '''
-        '''
         return
 
     def After(self):
-        '''
-        '''
         return
 
     def Render(self):
-        '''
-        '''
         return
 
 
@@ -70,18 +62,21 @@ class MeshBuilder(Builder):
         self.Mesh = Mesh()
 
     def Build(self, *args):
-        i, k = args
-        self.SubMesh = Mesh()
+        a, b, i, k = args
 
-        self.AppendVertex(i)
-        self.AppendVertex(i - 1)
-        self.AppendVertex(i - k - 1)
-        self.AppendVertex(i - k)
+        if a > -1:
+            if b > 0:
+                self.SubMesh = Mesh()
 
-        self.SubMesh.Faces.AddFace(0, 1, 2, 3)
-        # self.SubMesh.Normals.ComputeNormals()
-        # self.SubMesh.Compact()
-        self.Mesh.Append(self.SubMesh)
+                self.AppendVertex(i)
+                self.AppendVertex(i - 1)
+                self.AppendVertex(i - k - 1)
+                self.AppendVertex(i - k)
+
+                self.SubMesh.Faces.AddFace(0, 1, 2, 3)
+                # self.SubMesh.Normals.ComputeNormals()
+                # self.SubMesh.Compact()
+                self.Mesh.Append(self.SubMesh)
 
     def After(self):
         self.Mesh.Weld(pi)
@@ -97,7 +92,6 @@ class MeshBuilder(Builder):
         Parameters
         ----------
         i : int
-        mesh : Rhino.Geometry.Mesh
         '''
         try:
             p = self.CalabiYau.Points[i]
@@ -141,10 +135,10 @@ class CalabiYau:
 
     def __ops__(self, builder):
         return {
-            1: [builder.Before],
-            2: [builder.Build],
-            3: [builder.After],
-            4: builder.Render
+            'before': [builder.Before],
+            'build': [builder.Build],
+            'after': [builder.After],
+            'render': builder.Render
         }
 
     def PointCloudBuilder(self):
@@ -167,7 +161,7 @@ class CalabiYau:
         '''
         builder = self.Builder[output]()
         self.ParametricPlot3D(builder)
-        builder[4]()
+        builder['render']()
 
     def ComplexU1(self, a, b):
         m1 = cmath.exp(complex(a, b))
@@ -200,9 +194,8 @@ class CalabiYau:
 
         for k1 in range(self.n):
             for k2 in range(self.n):
-                # Call Setup functions
-                for cb in builder[1]:
-                    cb()
+                for op in builder['before']:
+                    op()
 
                 for a in rs.frange(float(-1), maxA, self.Step):
                     for b in rs.frange(float(0), maxB, stepB):
@@ -222,27 +215,24 @@ class CalabiYau:
 
                         self.Points.append(Point3d(x, y, z))
 
-                        if a > -1:
-                            if b > 0:
-                                # Call each
-                                for cb in builder[2]:
-                                    cb(i, k)
+                        for op in builder['build']:
+                            op(a, b, i, k)
 
                         # Increment sample count
                         i += 1
 
-                # Call finalize functions
-                for cb in builder[3]:
-                    cb()
+                for op in builder['after']:
+                    op()
 
 
-def Run(type=2):
+def Run():
     n = rs.GetInteger('n', 1, 1)
     Alpha = rs.GetReal('Degree', 1.0, 0.0)
     Density = rs.GetReal('Density', 0.1, 0.01)
     Scale = rs.GetInteger('Scale', 100, 1)
+    Type = rs.GetInteger('Type', 2, 1, 3)
 
-    CalabiYau(n, Alpha, Density, Scale).Build(type)
+    CalabiYau(n, Alpha, Density, Scale).Build(Type)
 
 
 rs.EnableRedraw(True)
