@@ -60,6 +60,6 @@ Rhino application files are accessible from: `/Applications/RhinoWIP.app/Content
 
 ---
 
-[x] [#1](/issues/1)
-[x] [#2](/issues/2)
-[ ] [#3](/issues/3)
+- [#1] Transpose Complex Ops
+
+- [#2] Decompile Assembly
