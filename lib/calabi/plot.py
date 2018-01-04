@@ -18,6 +18,95 @@ from Rhino.Geometry import Point3d, Mesh
 import export
 
 
+class Builder:
+    def __init__(self, cy):
+        self.CalabiYau = cy
+
+    def Before(self):
+        '''
+        '''
+        return
+
+    def Build(self):
+        '''
+        '''
+        return
+
+    def After(self):
+        '''
+        '''
+        return
+
+    def Render(self):
+        '''
+        '''
+        return
+
+
+class PointCloudBuilder(Builder):
+    def __init__(self, cy):
+        Builder.__init__(self, cy)
+        self.CalabiYau = cy
+
+    def Render(self):
+        for point in self.CalabiYau.Points:
+            rs.AddPoint(point)
+
+
+class SurfaceBuilder(Builder):
+    def __init__(self, cy):
+        Builder.__init__(self, cy)
+        self.CalabiYau = cy
+
+
+class MeshBuilder(Builder):
+    def __init__(self, cy):
+        Builder.__init__(self, cy)
+        self.CalabiYau = cy
+        self.Mesh = None
+        self.SubMesh = None
+
+    def Before(self):
+        self.Mesh = Mesh()
+
+    def Build(self, *args):
+        i, k = args
+        self.SubMesh = Mesh()
+
+        self.AppendVertex(i)
+        self.AppendVertex(i - 1)
+        self.AppendVertex(i - k - 1)
+        self.AppendVertex(i - k)
+
+        self.SubMesh.Faces.AddFace(0, 1, 2, 3)
+        # self.SubMesh.Normals.ComputeNormals()
+        # self.SubMesh.Compact()
+        self.Mesh.Append(self.SubMesh)
+
+    def After(self):
+        self.Mesh.Weld(pi)
+        self.CalabiYau.Meshes.append(self.Mesh)
+
+    def Render(self):
+        for mesh in self.CalabiYau.Meshes:
+            if scriptcontext.doc.Objects.AddMesh(mesh) != System.Guid.Empty:
+                scriptcontext.doc.Views.Redraw()
+
+    def AppendVertex(self, i):
+        '''
+        Parameters
+        ----------
+        i : int
+        mesh : Rhino.Geometry.Mesh
+        '''
+        try:
+            p = self.CalabiYau.Points[i]
+            self.SubMesh.Vertices.Add(p.X, p.Y, p.Z)
+        except IndexError:
+            print 'Points[' + str(i) + '] out of range'
+            return
+
+
 class CalabiYau:
     '''
     Attributes
@@ -38,16 +127,47 @@ class CalabiYau:
     '''
     def __init__(self, n=1, deg=1.0, step=0.1, scale=1):
         self.n = n
-        self.i = complex(0.0, 1.0)
+        self.I = complex(0.0, 1.0)
         self.Alpha = deg
         self.Step = step
         self.Scale = scale
         self.Points = []
         self.Meshes = []
+        self.Builder = {
+            1: self.PointCloudBuilder,
+            2: self.MeshBuilder,
+            3: self.SurfaceBuilder,
+        }
 
-    def Build(self):
-        self.ParametricPlot3D()
-        return self
+    def __ops__(self, builder):
+        return {
+            1: [builder.Before],
+            2: [builder.Build],
+            3: [builder.After],
+            4: builder.Render
+        }
+
+    def PointCloudBuilder(self):
+        return self.__ops__(PointCloudBuilder(self))
+
+    def MeshBuilder(self):
+        return self.__ops__(MeshBuilder(self))
+
+    def SurfaceBuilder(self):
+        return self.__ops__(SurfaceBuilder(self))
+
+    def Build(self, output=2):
+        '''
+        output : int
+            if output == 1: then generate Rhino.Geometry.Point
+            elif output == 2: then generate Rhino.Geometry.Mesh
+            elif output == 3: then generate Rhino.Geometry.Surface
+            else:
+                raise
+        '''
+        builder = self.Builder[output]()
+        self.ParametricPlot3D(builder)
+        builder[4]()
 
     def ComplexU1(self, a, b):
         m1 = cmath.exp(complex(a, b))
@@ -61,15 +181,17 @@ class CalabiYau:
 
     def ComplexZ1(self, a, b, n, k):
         u1 = self.ComplexU1(a, b) ** complex(2.0 / n)
-        m1 = cmath.exp(self.i * complex((2.0 * pi * k) / n))
+        m1 = cmath.exp(self.I * complex((2.0 * pi * k) / n))
         return m1 * u1
 
     def ComplexZ2(self, a, b, n, k):
         u2 = self.ComplexU2(a, b) ** complex(2.0 / n)
-        m2 = cmath.exp(self.i * complex((2.0 * pi * k) / n))
+        m2 = cmath.exp(self.I * complex((2.0 * pi * k) / n))
         return m2 * u2
 
-    def ParametricPlot3D(self):
+    def ParametricPlot3D(self, builder):
+        '''
+        '''
         i = int(0)  # Sample count
         k = int(0)  # Dimension count
         maxA = float(1)
@@ -78,7 +200,9 @@ class CalabiYau:
 
         for k1 in range(self.n):
             for k2 in range(self.n):
-                mesh = Mesh()
+                # Call Setup functions
+                for cb in builder[1]:
+                    cb()
 
                 for a in rs.frange(float(-1), maxA, self.Step):
                     for b in rs.frange(float(0), maxB, stepB):
@@ -100,62 +224,25 @@ class CalabiYau:
 
                         if a > -1:
                             if b > 0:
-                                subMesh = Mesh()
-
-                                self.AppendVertex(i, subMesh)
-                                self.AppendVertex(i - 1, subMesh)
-                                self.AppendVertex(i - k - 1, subMesh)
-                                self.AppendVertex(i - k, subMesh)
-
-                                subMesh.Faces.AddFace(0, 1, 2, 3)
-                                # subMesh.Normals.ComputeNormals()
-                                # subMesh.Compact()
-                                mesh.Append(subMesh)
+                                # Call each
+                                for cb in builder[2]:
+                                    cb(i, k)
 
                         # Increment sample count
                         i += 1
 
-                mesh.Weld(pi)
-                self.Meshes.append(mesh)
-
-    def AppendVertex(self, i, mesh):
-        '''
-        Parameters
-        ----------
-        i : int
-        mesh : Rhino.Geometry.Mesh
-        '''
-        try:
-            p = self.Points[i]
-            mesh.Vertices.Add(p.X, p.Y, p.Z)
-        except IndexError:
-            print 'Points[' + str(i) + '] out of range'
-            return
+                # Call finalize functions
+                for cb in builder[3]:
+                    cb()
 
 
-def Run(r=1):
-    n = rs.GetInteger("n", 1, 1)
-    Alpha = rs.GetReal("Degree", 1.0, 0.0)
-    Density = rs.GetReal("Density", 0.1, 0.01)
-    Scale = rs.GetInteger("Scale", 100, 1)
+def Run(type=2):
+    n = rs.GetInteger('n', 1, 1)
+    Alpha = rs.GetReal('Degree', 1.0, 0.0)
+    Density = rs.GetReal('Density', 0.1, 0.01)
+    Scale = rs.GetInteger('Scale', 100, 1)
 
-    obj = CalabiYau(n, Alpha, Density, Scale).Build()
-
-    if r == 1:
-        RenderMesh(obj)
-    else:
-        RenderPoints(obj)
-
-
-def RenderPoints(obj):
-    for point in obj.Points:
-        rs.AddPoint(point)
-
-
-def RenderMesh(obj):
-    for mesh in obj.Meshes:
-        if scriptcontext.doc.Objects.AddMesh(mesh) != System.Guid.Empty:
-            scriptcontext.doc.Views.Redraw()
+    CalabiYau(n, Alpha, Density, Scale).Build(type)
 
 
 rs.EnableRedraw(True)
