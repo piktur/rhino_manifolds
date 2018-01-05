@@ -34,8 +34,8 @@ Apparently Top View + Export Selected is better suited to line export [Source](h
 [Example](http://developer.rhino3d.com/samples/rhinopython/export-points/)
 
 `RhinoDLR_Python.rhp/RssLib/rhinoscript/document.py` Configure Document settings
-
-`RhinoDLR_Python.rhp/RssLib/rhinoscript/view.py` Configure View settings:
+`RhinoDLR_Python.rhp/RssLib/rhinoscript/object.py` Configure Object style and position
+`RhinoDLR_Python.rhp/RssLib/rhinoscript/view.py` Configure View settings
 
 - `RotateCamera()`
 
