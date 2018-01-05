@@ -205,22 +205,38 @@ class CalabiYau:
 
     def ParametricPlot3D(self, builder):
         '''
+        Refer to [Curves Experimentation](https://bitbucket.org/snippets/kunst_dev/X894E8)
+
+        Calculate iterations `self.n * self.n * len(rng_a) * len(rng_b)`
         '''
+
         i = int(0)  # Sample count
         k = int(0)  # Dimension count
-        maxA = float(1)
-        maxB = float(pi / 2)
-        stepB = maxB * self.Step
+        max_a = float(1)
+        max_b = float(pi / 2)
+        step_b = max_b * self.Step
+        rng_k = range(self.n)
+        rng_a = rs.frange(float(-1), max_a, self.Step)
+        rng_b = rs.frange(float(0), max_b, step_b)
 
-        for k1 in range(self.n):
-            for k2 in range(self.n):
+        for k1 in rng_k:
+            # Break after first iteration
+            # if k1 == rng_k[1]: break
+
+            for k2 in rng_k:
+                # if k2 == rng_k[1]: break
+
                 for op in builder['before']:
                     op()
 
-                for a in rs.frange(float(-1), maxA, self.Step):
-                    for b in rs.frange(float(0), maxB, stepB):
-                        if (a == -1 and k1 == 0 and k2 == 0):
-                            k += 1
+                crv1 = [] # bound_start
+                crv2 = [] # bound_end
+                crv3 = [] # curve_outer
+                crv4 = [] # curve_inner
+
+                for a in rng_a:
+                    for b in rng_b:
+                        if (a == -1 and k1 == 0 and k2 == 0): k += 1
 
                         z1 = self.ComplexZ1(a, b, self.n, k1)
                         z2 = self.ComplexZ2(a, b, self.n, k2)
@@ -233,16 +249,63 @@ class CalabiYau:
                             sin(self.Alpha) * z2.imag
                         ))
 
-                        self.Points.append(Point3d(x, y, z))
+                        point = Point3d(x, y, z)
+                        self.Points.append(point)
+
+                        # TODO Are we always moving right to left?
 
                         for op in builder['build']:
                             op(a, b, i, k)
 
+                        if a == rng_a[0]:
+                            crv4.append(point)
+                        elif a == rng_a[-1]:
+                            crv3.append(point)
+                        elif b == rng_b[0]:
+                            crv1.append(point)
+                        elif b == rng_b[-1]:
+                            crv2.append(point)
+
+                        if a == rng_a[0] or a == rng_a[-1]:
+                            if b == rng_b[0]:
+                                crv1.append(point)
+                            elif b == rng_b[-1]:
+                                crv2.append(point)
+
                         # Increment sample count
                         i += 1
 
+
+                # TODO groups quad surface curves
+                # TODO rescue Exception raised if insufficient points
+
                 for op in builder['after']:
                     op()
+
+                # Halt()
+                # rs.AddPoints(crv1)
+                rs.AddInterpCurve(crv1)
+
+                # Halt()
+                # rs.AddPoints(crv2)
+                rs.AddInterpCurve(crv2)
+
+                # Halt()
+                # rs.AddPoints(crv3)
+                rs.AddInterpCurve(crv3)
+
+                # Halt()
+                # rs.AddPoints(crv4)
+                rs.AddInterpCurve(crv4)
+
+
+def Halt():
+    '''
+    In lieu of MacOS debugger this will have to do.
+    '''
+    if rs.GetBoolean('Proceed',  ('Proceed?', 'No', 'Yes'), (True)) is None:
+        return
+
 
 def GenerateMatrix(inc=15):
     '''
@@ -251,11 +314,11 @@ def GenerateMatrix(inc=15):
 
 
 def Run():
-    n = rs.GetInteger('n', 1, 1)
-    Alpha = rs.GetReal('Degree', 1.0, 0.0)
-    Density = rs.GetReal('Density', 0.1, 0.01)
-    Scale = rs.GetInteger('Scale', 100, 1)
-    Type = rs.GetInteger('Type', 2, 1, 4)
+    n = rs.GetInteger('n', 2, 1, 10)
+    Alpha = rs.GetReal('Degree', 1.0, 0.0, 1.0)
+    Density = rs.GetReal('Density', 0.1, 0.01, 0.2)
+    Scale = rs.GetInteger('Scale', 100, 1, 100)
+    Type = rs.GetInteger('Type', 1, 1, 4)
 
     CalabiYau(n, Alpha, Density, Scale).Build(Type)
 
