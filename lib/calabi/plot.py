@@ -11,9 +11,10 @@ import importlib
 import cmath
 from math import cos, sin, pi
 import rhinoscriptsyntax as rs
-import scriptcontext
+from scriptcontext import doc
+from Rhino.Geometry import Point3d, Mesh, NurbsCurve, Curve, Brep, Vector3d, CurveKnotStyle
 import System.Guid
-from Rhino.Geometry import Point3d, Mesh, NurbsCurve
+import System.Enum
 # from Rhino.Collections import Point3dList
 
 # Import local modules
@@ -36,6 +37,15 @@ class Builder:
     def Render(self, *args):
         return
 
+    def __rendered__(obj):
+        '''
+        Confirm `obj` has Guid
+        '''
+        if obj == System.Guid.Empty:
+            raise Exception('RenderError')
+
+        return True
+
 
 class PointCloudBuilder(Builder):
     def __init__(self, cy):
@@ -44,7 +54,8 @@ class PointCloudBuilder(Builder):
 
     def Render(self):
         for point in self.CalabiYau.Points:
-            rs.AddPoint(point)
+            self.__rendered__(doc.Objects.AddPoint(point))
+        doc.Views.Redraw()
 
 
 class MeshBuilder(Builder):
@@ -58,7 +69,27 @@ class MeshBuilder(Builder):
         self.Mesh = Mesh()
 
     def Build(self, *args):
-        a, b, i, k = args
+        a, b, i, k, point = args
+
+
+
+
+
+
+
+
+
+
+
+
+        # MAYBE THIS WILL REMOVE THOSE ADDITIONAL SURFACES
+
+
+
+
+
+
+
 
         if a > -1:
             if b > 0:
@@ -80,8 +111,9 @@ class MeshBuilder(Builder):
 
     def Render(self):
         for mesh in self.CalabiYau.Meshes:
-            if scriptcontext.doc.Objects.AddMesh(mesh) != System.Guid.Empty:
-                scriptcontext.doc.Views.Redraw()
+            self.__rendered__(doc.Objects.AddMesh(mesh))
+
+        doc.Views.Redraw()
 
     def AppendVertex(self, i):
         '''
@@ -97,23 +129,98 @@ class MeshBuilder(Builder):
             return
 
 
-class SurfaceBuilder(Builder):
-    def __init__(self, cy):
-        Builder.__init__(self, cy)
-        self.CalabiYau = cy
-
-
 class CurveBuilder(Builder):
     def __init__(self, cy):
         Builder.__init__(self, cy)
         self.CalabiYau = cy
 
+
+# TODO Move Curve behaviour into CurveBuilder and inherit
+class SurfaceBuilder(Builder):
+    def __init__(self, cy):
+        Builder.__init__(self, cy)
+        self.CalabiYau = cy
+        self.C1 = None  # bound_start
+        self.C2 = None  # bound_end
+        self.C3 = None  # curve_outer
+        self.C4 = None  # curve_inner
+        self.SubCurves = None
+        self.Curves = []
+        self.Breps = []
+
+    def Before(self):
+        self.C1 = []
+        self.C2 = []
+        self.C3 = []
+        self.C4 = []
+        self.SubCurves = []
+
+    def Build(self, *args):
+        a, b, i, k, point = args
+
+        if a == self.CalabiYau.RngA[0]:
+            self.C4.append(point)
+        elif a == self.CalabiYau.RngA[-1]:
+            self.C3.append(point)
+        elif b == self.CalabiYau.RngB[0]:
+            self.C1.append(point)
+        elif b == self.CalabiYau.RngB[-1]:
+            self.C2.append(point)
+
+        if a == self.CalabiYau.RngA[0] or a == self.CalabiYau.RngA[-1]:
+            if b == self.CalabiYau.RngB[0]:
+                self.C1.append(point)
+            elif b == self.CalabiYau.RngB[-1]:
+                self.C2.append(point)
+
+    def After(self):
+        self.CreateInterpolatedCurves()
+        self.Breps.append(self.CreateBrep())
+
     def Render(self):
-        # curve = NurbsCurve.Create(False, 1, self.CalabiYau.Points)
-        # # surface = Rhino.Geometry.NurbsCurve.CreateFromPoints(pointslist, )
-        #
-        # if scriptcontext.doc.Objects.AddCurve(curve) != System.Guid.Empty:
-        scriptcontext.doc.Views.Redraw()
+        print len(self.Breps)
+
+        # for brep in self.Breps:
+        #     __rendered__(doc.Objects.AddBrep(brep))
+
+        for curve in self.Curves:
+            self.__rendered__(doc.Objects.AddCurve(curve))
+
+        doc.Views.Redraw()
+
+    def CreateInterpolatedCurves(self):
+        '''
+        TODO group quad surface curves
+        TODO rescue Exception raised if insufficient points
+
+        [](http://developer.rhino3d.com/samples/rhinocommon/surface-from-edge-curves/)
+        `rs.AddInterpCurve`
+        '''
+        for points in self.C1, self.C2, self.C3, self.C4:
+            points = rs.coerce3dpointlist(points, True)
+
+            start_tangent = Vector3d.Unset
+            start_tangent = rs.coerce3dvector(start_tangent, True)
+
+            end_tangent = Vector3d.Unset
+            end_tangent = rs.coerce3dvector(end_tangent, True)
+
+            knotstyle = System.Enum.ToObject(CurveKnotStyle, 0)
+
+            crv = Curve.CreateInterpolatedCurve(points, 3, knotstyle, start_tangent, end_tangent)
+
+            if not crv:
+                raise Exception("Unable to CreateInterpolatedCurve")
+            else:
+                self.SubCurves.append(crv)
+
+        return self.SubCurves
+
+    def CreateBrep(self):
+        '''
+        Boundary Representation (Brep) from 4 curves
+        '''
+        return Brep.CreateEdgeSurface(self.SubCurves)
 
 
 class CalabiYau:
@@ -146,9 +253,15 @@ class CalabiYau:
         self.Builder = {
             1: self.PointCloudBuilder,
             2: self.MeshBuilder,
-            3: self.SurfaceBuilder,
-            4: self.CurveBuilder
+            3: self.CurveBuilder,
+            4: self.SurfaceBuilder
         }
+        self.MaxA = float(1)
+        self.MaxB = float(pi / 2)
+        self.StepB = self.MaxB * self.Step
+        self.RngK = range(self.n)
+        self.RngA = rs.frange(float(-1), self.MaxA, self.Step)
+        self.RngB = rs.frange(float(0), self.MaxB, self.StepB)
 
     def __ops__(self, builder):
         return {
@@ -207,35 +320,24 @@ class CalabiYau:
         '''
         Refer to [Curves Experimentation](https://bitbucket.org/snippets/kunst_dev/X894E8)
 
-        Calculate iterations `self.n * self.n * len(rng_a) * len(rng_b)`
+        Calculate iterations `self.n * self.n * len(self.RngA) * len(self.RngB)`
         '''
 
-        i = int(0)  # Sample count
+        i = int(0)  # Cumulative position within nested loop -- equiv to `len(self.Points)`
         k = int(0)  # Dimension count
-        max_a = float(1)
-        max_b = float(pi / 2)
-        step_b = max_b * self.Step
-        rng_k = range(self.n)
-        rng_a = rs.frange(float(-1), max_a, self.Step)
-        rng_b = rs.frange(float(0), max_b, step_b)
 
-        for k1 in rng_k:
+        for k1 in self.RngK:
             # Break after first iteration
-            # if k1 == rng_k[1]: break
+            # if k1 == self.RngK[1]: break
 
-            for k2 in rng_k:
-                # if k2 == rng_k[1]: break
+            for k2 in self.RngK:
+                # if k2 == self.RngK[1]: break
 
                 for op in builder['before']:
                     op()
 
-                crv1 = [] # bound_start
-                crv2 = [] # bound_end
-                crv3 = [] # curve_outer
-                crv4 = [] # curve_inner
-
-                for a in rng_a:
-                    for b in rng_b:
+                for a in self.RngA:
+                    for b in self.RngB:
                         if (a == -1 and k1 == 0 and k2 == 0): k += 1
 
                         z1 = self.ComplexZ1(a, b, self.n, k1)
@@ -249,54 +351,18 @@ class CalabiYau:
                             sin(self.Alpha) * z2.imag
                         ))
 
+                        # TODO Confirm; are we always moving right to left?
                         point = Point3d(x, y, z)
                         self.Points.append(point)
 
-                        # TODO Are we always moving right to left?
-
                         for op in builder['build']:
-                            op(a, b, i, k)
+                            op(a, b, i, k, point)
 
-                        if a == rng_a[0]:
-                            crv4.append(point)
-                        elif a == rng_a[-1]:
-                            crv3.append(point)
-                        elif b == rng_b[0]:
-                            crv1.append(point)
-                        elif b == rng_b[-1]:
-                            crv2.append(point)
-
-                        if a == rng_a[0] or a == rng_a[-1]:
-                            if b == rng_b[0]:
-                                crv1.append(point)
-                            elif b == rng_b[-1]:
-                                crv2.append(point)
-
-                        # Increment sample count
+                        # Increment loop position
                         i += 1
-
-
-                # TODO groups quad surface curves
-                # TODO rescue Exception raised if insufficient points
 
                 for op in builder['after']:
                     op()
-
-                # Halt()
-                # rs.AddPoints(crv1)
-                rs.AddInterpCurve(crv1)
-
-                # Halt()
-                # rs.AddPoints(crv2)
-                rs.AddInterpCurve(crv2)
-
-                # Halt()
-                # rs.AddPoints(crv3)
-                rs.AddInterpCurve(crv3)
-
-                # Halt()
-                # rs.AddPoints(crv4)
-                rs.AddInterpCurve(crv4)
 
 
 def Halt():
@@ -318,7 +384,7 @@ def Run():
     Alpha = rs.GetReal('Degree', 1.0, 0.0, 1.0)
     Density = rs.GetReal('Density', 0.1, 0.01, 0.2)
     Scale = rs.GetInteger('Scale', 100, 1, 100)
-    Type = rs.GetInteger('Type', 1, 1, 4)
+    Type = rs.GetInteger('Type', 4, 1, 4)
 
     CalabiYau(n, Alpha, Density, Scale).Build(Type)
 
