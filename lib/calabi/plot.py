@@ -5,6 +5,8 @@ Replaces Grasshopper workflow -- execute via `RunPythonScript`
 [](http://www.food4rhino.com/app/calabi-yau-manifold)
 [Python Standard Library - math](https://docs.python.org/2/library/math.html)
 [Python Standard Library - cmath](https://docs.python.org/2/library/cmath.html)
+
+TOOD Assign elements to separate layers
 '''
 
 import importlib
@@ -12,7 +14,7 @@ import cmath
 from math import cos, sin, pi
 import rhinoscriptsyntax as rs
 from scriptcontext import doc
-from Rhino.Geometry import Point3d, Mesh, NurbsCurve, Curve, Brep, Vector3d, CurveKnotStyle
+from Rhino.Geometry import Point3d, Mesh, NurbsCurve, NurbsSurface, Curve, Brep, Vector3d, CurveKnotStyle
 import System.Guid
 import System.Enum
 # from Rhino.Collections import Point3dList
@@ -21,23 +23,44 @@ import System.Enum
 import export
 
 
+class EventHandler:
+    __slots__ = ['__registry__']
+
+    def __init__(self):
+        self.__registry__ = {}
+
+    def register(self, subscribers):
+        for event in subscribers.iterkeys():
+            for func in subscribers[event]:
+                self.subscribe(event, func)
+
+        return self.__registry__
+
+    def publish(self, event, *args, **kwargs):
+        if event in self.__registry__:
+            for func in self.__registry__[event]:
+                func(*args, **kwargs)
+
+    def subscribe(self, event, func):
+        if not callable(func):
+            raise TypeError(str(func) + 'is not callable')
+        if event in self.__registry__ and type(self.__registry__) is list:
+            self.__registry__[event].append(func)
+        else:
+            self.__registry__[event] = [func]
+
+
 class Builder:
     def __init__(self, cy):
         self.CalabiYau = cy
 
-    def Before(self, *args):
+    def Build(self, *args, **kwargs):
         return
 
-    def Build(self, *args):
+    def Render(self, *args, **kwargs):
         return
 
-    def After(self, *args):
-        return
-
-    def Render(self, *args):
-        return
-
-    def __rendered__(obj):
+    def __rendered__(self, obj):
         '''
         Confirm `obj` has Guid
         '''
@@ -52,44 +75,33 @@ class PointCloudBuilder(Builder):
         Builder.__init__(self, cy)
         self.CalabiYau = cy
 
-    def Render(self):
+    def Render(self, *args):
         for point in self.CalabiYau.Points:
             self.__rendered__(doc.Objects.AddPoint(point))
         doc.Views.Redraw()
 
 
 class MeshBuilder(Builder):
+    __slots__ = ['Mesh', 'SubMesh']
+
     def __init__(self, cy):
         Builder.__init__(self, cy)
         self.CalabiYau = cy
         self.Mesh = None
         self.SubMesh = None
 
-    def Before(self):
+    def __listeners__(self):
+        return {
+            'a.on': [self.BuildMesh],
+            'b.on': [self.BuildSubMesh],
+            'a.out': [self.JoinMesh]
+        }
+
+    def BuildMesh(self, *args):
         self.Mesh = Mesh()
 
-    def Build(self, *args):
-        a, b, i, k, point = args
-
-
-
-
-
-
-
-
-
-
-
-
-        # MAYBE THIS WILL REMOVE THOSE ADDITIONAL SURFACES
-
-
-
-
-
-
-
+    def BuildSubMesh(self, *args):
+        k1, k2, a, b, i, k, point = args
 
         if a > -1:
             if b > 0:
@@ -105,11 +117,11 @@ class MeshBuilder(Builder):
                 # self.SubMesh.Compact()
                 self.Mesh.Append(self.SubMesh)
 
-    def After(self):
+    def JoinMesh(self, *args):
         self.Mesh.Weld(pi)
         self.CalabiYau.Meshes.append(self.Mesh)
 
-    def Render(self):
+    def Render(self, *args):
         for mesh in self.CalabiYau.Meshes:
             self.__rendered__(doc.Objects.AddMesh(mesh))
 
@@ -117,9 +129,8 @@ class MeshBuilder(Builder):
 
     def AppendVertex(self, i):
         '''
-        Parameters
-        ----------
-        i : int
+        Parameters:
+            i : int
         '''
         try:
             p = self.CalabiYau.Points[i]
@@ -137,6 +148,11 @@ class CurveBuilder(Builder):
 
 # TODO Move Curve behaviour into CurveBuilder and inherit
 class SurfaceBuilder(Builder):
+    __slots__ = []
+
+    '''
+    Refer to [Curves Experimentation](https://bitbucket.org/snippets/kunst_dev/X894E8)
+    '''
     def __init__(self, cy):
         Builder.__init__(self, cy)
         self.CalabiYau = cy
@@ -145,117 +161,239 @@ class SurfaceBuilder(Builder):
         self.C3 = None  # curve_outer
         self.C4 = None  # curve_inner
         self.SubCurves = None
+        self.SubPoints = None
         self.Curves = []
         self.Breps = []
+        self.U = []
+        self.V = []
 
-    def Before(self):
+    def __listeners__(self):
+        return {
+            'k1.on': [self.Before],
+            'a.in': [self.Build]
+        }
+
+    def Before(self, *args):
         self.C1 = []
         self.C2 = []
         self.C3 = []
         self.C4 = []
         self.SubCurves = []
+        self.SubPoints = []
+        # self.V.append([])
+        self.U.append([])
 
     def Build(self, *args):
+        '''
+        TODO Ensure domain corner anchored to centre point
+        TOOD Group points by surface domain
+        TODO Group quad surface curves
+        TODO Fit surface to domain points
+        '''
         a, b, i, k, point = args
+
+        self.SubPoints.append(point)
+
+        u = self.U[-1]
+        # self.V[-1]
 
         if a == self.CalabiYau.RngA[0]:
             self.C4.append(point)
+            # u.append(point)
+            # v.append(point)
         elif a == self.CalabiYau.RngA[-1]:
             self.C3.append(point)
-        elif b == self.CalabiYau.RngB[0]:
+            # u.append(point)
+            # v.append(point)
+        elif b == self.CalabiYau.RngB[0]:  # is this necessary?
             self.C1.append(point)
         elif b == self.CalabiYau.RngB[-1]:
             self.C2.append(point)
 
+        # TODO do we need to be adding this to the front of the array arr.insert(0, val)
         if a == self.CalabiYau.RngA[0] or a == self.CalabiYau.RngA[-1]:
+            u.append(point)
+            # v.append(point)
             if b == self.CalabiYau.RngB[0]:
                 self.C1.append(point)
             elif b == self.CalabiYau.RngB[-1]:
                 self.C2.append(point)
 
-    def After(self):
-        self.CreateInterpolatedCurves()
-        self.Breps.append(self.CreateBrep())
+    # Panelling tools?
+    # NetworkSrf - Surface from curves
+    # rs.AddSrfControlPtGrid
+    # NurbsSurface.CreateNetworkSurface
+    # Rhino.AddNetworkSrf (arrCurves [, intContinuity [, dblEdgeTolerance [, dblInteriorTolerance [, dblAngleTolerance]]]])
+    # rs.AddSrfPtGrid
+    # u, v = len(self.CalabiYau.RngB), len(self.CalabiYau.RngB)
+    # points = rs.coerce3dpointlist(self.SubPoints, True)
+    # surf = NurbsSurface.CreateThroughPoints(points, u, v, 3, 3, False, False)
+    # rs.AddSrfPtGrid([u, v], self.SubPoints)
+    def After(self, *args):
+        print len(self.U[-1])
+        # print len(self.V[-1])
 
-    def Render(self):
-        print len(self.Breps)
-
-        # for brep in self.Breps:
-        #     __rendered__(doc.Objects.AddBrep(brep))
-
-        for curve in self.Curves:
+        for curve in self.CreateInterpolatedCurves(*self.U):
             self.__rendered__(doc.Objects.AddCurve(curve))
+            if rs.GetBoolean('Proceed',  ('Proceed?', 'No', 'Yes'), (True)) is None:
+                break
+
+        # self.CreateInterpolatedCurves()
+        # for curve in self.CreateInterpolatedCurves(self.C1, self.C2, self.C3, self.C4):
+        #     self.SubCurves.append(curve)
+        #
+        # self.Curves.append(self.SubCurves)
+
+        # self.Breps.append(self.CreateBrep())
+
+    def Render(self, *args):
+        # print len(self.Breps)
+
+        # for point in self.CalabiYau.Points:
+        #     self.__rendered__(doc.Objects.AddPoint(point))
+        #
+        # for curveGroup in self.Curves:
+        #     for curve in curveGroup:
+        #         self.__rendered__(doc.Objects.AddCurve(curve))
+        #
+        # for brep in self.Breps:
+        #     try:
+        #         self.__rendered__(doc.Objects.AddBrep(brep))
+        #     except Exception:
+        #         continue
 
         doc.Views.Redraw()
 
-    def CreateInterpolatedCurves(self):
+    def CreateInterpolatedCurve(self, points):
         '''
-        TODO group quad surface curves
         TODO rescue Exception raised if insufficient points
 
         [](http://developer.rhino3d.com/samples/rhinocommon/surface-from-edge-curves/)
         `rs.AddInterpCurve`
         '''
-        for points in self.C1, self.C2, self.C3, self.C4:
-            points = rs.coerce3dpointlist(points, True)
+        points = rs.coerce3dpointlist(points, True)
 
-            start_tangent = Vector3d.Unset
-            start_tangent = rs.coerce3dvector(start_tangent, True)
+        start_tangent = Vector3d.Unset
+        start_tangent = rs.coerce3dvector(start_tangent, True)
 
-            end_tangent = Vector3d.Unset
-            end_tangent = rs.coerce3dvector(end_tangent, True)
+        end_tangent = Vector3d.Unset
+        end_tangent = rs.coerce3dvector(end_tangent, True)
 
-            knotstyle = System.Enum.ToObject(CurveKnotStyle, 0)
+        knotstyle = System.Enum.ToObject(CurveKnotStyle, 0)
 
-            crv = Curve.CreateInterpolatedCurve(points, 3, knotstyle, start_tangent, end_tangent)
+        curve = Curve.CreateInterpolatedCurve(points, 3, knotstyle, start_tangent, end_tangent)
 
-            if not crv:
-                raise Exception("Unable to CreateInterpolatedCurve")
-            else:
-                self.SubCurves.append(crv)
+        if curve:
+            return curve
+        raise Exception('Unable to CreateInterpolatedCurve')
 
-        return self.SubCurves
+    def CreateInterpolatedCurves(self, *args):
+        '''
+        '''
+        return map(self.CreateInterpolatedCurve, args)
 
     def CreateBrep(self):
         '''
         Boundary Representation (Brep) from 4 curves
+
+        TODO RssLib/rhinoscript/surface.py
+            rs.AddSrfContourCrvs
+            rs.AddSrfControlPtGrid
+            rs.AddSrfPt
+            rs.AddSrfPtGrid
         '''
+
         return Brep.CreateEdgeSurface(self.SubCurves)
 
 
 class CalabiYau:
     '''
-    Attributes
-    ----------
-    n : int
-        [1..10]
-        Dimensions of Calabi Yau Manifold
-    i : complex
-    Alpha : float
-        [0.0..1.0]
-        Rotation
-    Step : float
-        [0.01..0.1]
-        Sample rate
-    Scale : int
-        [1..100]
-    Points : list<Rhino.Geometry.Point3d>
-    Meshes : list<Rhino.Geometry.Mesh>
+    Attributes:
+        n : int
+            [1..10]
+            Dimensions of Calabi Yau Manifold
+        Alpha : float
+            [0.0..1.0]
+            Rotation
+        Step : float
+            [0.01..0.1]
+            Sample rate
+        Scale : int
+            [1..100]
+        Points : list<Rhino.Geometry.Point3d>
+        Meshes : list<Rhino.Geometry.Mesh>
+        Builder : class
     '''
-    def __init__(self, n=int(1), deg=float(1.0), step=float(0.1), scale=int(1)):
+
+    __slots__ = ['n', 'Alpha', 'Step', 'Scale', 'MaxA', 'MaxB', 'StepB',
+                 'RngK', 'RngA', 'RngB', 'Points']
+
+    __builder__ = {
+        1: PointCloudBuilder,
+        2: MeshBuilder,
+        3: CurveBuilder,
+        4: SurfaceBuilder
+    }
+
+    # TODO move static equation functions into module
+    I = complex(0.0, 1.0)
+
+    @staticmethod
+    def U1(a, b):
+        m1 = cmath.exp(complex(a, b))
+        m2 = cmath.exp(complex(-a, -b))
+        return (m1 + m2) * 0.5
+
+    @staticmethod
+    def U2(a, b):
+        m1 = cmath.exp(complex(a, b))
+        m2 = cmath.exp(complex(-a, -b))
+        return (m1 - m2) * 0.5
+
+    @staticmethod
+    def Z1(a, b, n, k):
+        u1 = CalabiYau.U1(a, b) ** (2.0 / n)
+        m1 = cmath.exp(CalabiYau.I * ((2.0 * pi * k) / n))
+        return m1 * u1
+
+    @staticmethod
+    def Z2(a, b, n, k):
+        u2 = CalabiYau.U2(a, b) ** (2.0 / n)
+        m2 = cmath.exp(CalabiYau.I * ((2.0 * pi * k) / n))
+        return m2 * u2
+
+    @staticmethod
+    def calc(n, alpha, k1, k2, a, b):
+        '''
+        Returns:
+            R3 coordinates (x, y, z) as complex
+
+        Parameters:
+            n : int
+            alpha : float
+            k1 : float
+            k2 : float
+            a : float
+            b : float
+        '''
+        z1 = CalabiYau.Z1(a, b, n, k1)
+        z2 = CalabiYau.Z2(a, b, n, k2)
+
+        return (z1.real), (z2.real), (cos(alpha) * z1.imag + sin(alpha) * z2.imag)
+
+    def __init__(self, n=1, deg=1.0, step=0.1, scale=1, builder=4):
+        '''
+        Parameters:
+            builder : int
+                [1] generate Rhino.Geometry.Point
+                [2] generate Rhino.Geometry.Mesh
+                [3] generate Rhino.Geometry.Curve
+                [4] generate Rhino.Geometry.Surface
+        '''
         self.n = n
-        self.I = complex(0.0, 1.0)
         self.Alpha = deg * pi
         self.Step = step
         self.Scale = scale
-        self.Points = []
-        self.Meshes = []
-        self.Builder = {
-            1: self.PointCloudBuilder,
-            2: self.MeshBuilder,
-            3: self.CurveBuilder,
-            4: self.SurfaceBuilder
-        }
         self.MaxA = float(1)
         self.MaxB = float(pi / 2)
         self.StepB = self.MaxB * self.Step
@@ -263,106 +401,85 @@ class CalabiYau:
         self.RngA = rs.frange(float(-1), self.MaxA, self.Step)
         self.RngB = rs.frange(float(0), self.MaxB, self.StepB)
 
-    def __ops__(self, builder):
-        return {
-            'before': [builder.Before],
-            'build': [builder.Build],
-            'after': [builder.After],
-            'render': builder.Render
-        }
+        self.Points = []
+        self.Domains = []
+        self.Meshes = []
+        self.Builder = CalabiYau.__builder__[builder]
 
-    def PointCloudBuilder(self):
-        return self.__ops__(PointCloudBuilder(self))
+        # Setup Events registry
+        self.Events = EventHandler()
+        for d in ['k1', 'k2', 'a', 'b']:
+            for event in ['on', 'in', 'out']:
+                self.Events.__registry__['.'.join(d + event)] = []
 
-    def MeshBuilder(self):
-        return self.__ops__(MeshBuilder(self))
+    def Build(self):
+        builder = self.Builder(self)
+        # Register listeners if defined
+        if hasattr(self.Builder, '__listeners__') and callable(self.Builder.__listeners__):
+            builder.self.Events.register(builder.__listeners__())
+        self.ParametricPlot3D()
+        builder.Render()
 
-    def SurfaceBuilder(self):
-        return self.__ops__(SurfaceBuilder(self))
-
-    def CurveBuilder(self):
-        return self.__ops__(CurveBuilder(self))
-
-    def Build(self, output=2):
+    def Point(self, *args):
         '''
-        output : int
-            if output == 1: then generate Rhino.Geometry.Point
-            elif output == 2: then generate Rhino.Geometry.Mesh
-            elif output == 3: then generate Rhino.Geometry.Surface
-            else:
-                raise
+        Calculate point coords
+        TODO Confirm; are we always moving right to left?
         '''
-        builder = self.Builder[output]()
-        self.ParametricPlot3D(builder)
-        builder['render']()
+        return Point3d(*map(
+            lambda x: x * self.Scale,
+            CalabiYau.calc(self.n, self.Alpha, *args)))
 
-    def ComplexU1(self, a, b):
-        m1 = cmath.exp(complex(a, b))
-        m2 = cmath.exp(complex(-a, -b))
-        return (m1 + m2) * 0.5
-
-    def ComplexU2(self, a, b):
-        m1 = cmath.exp(complex(a, b))
-        m2 = cmath.exp(complex(-a, -b))
-        return (m1 - m2) * 0.5
-
-    def ComplexZ1(self, a, b, n, k):
-        u1 = self.ComplexU1(a, b) ** (2.0 / n)
-        m1 = cmath.exp(self.I * ((2.0 * pi * k) / n))
-        return m1 * u1
-
-    def ComplexZ2(self, a, b, n, k):
-        u2 = self.ComplexU2(a, b) ** (2.0 / n)
-        m2 = cmath.exp(self.I * ((2.0 * pi * k) / n))
-        return m2 * u2
-
-    def ParametricPlot3D(self, builder):
+    def ParametricPlot3D(self):
         '''
-        Refer to [Curves Experimentation](https://bitbucket.org/snippets/kunst_dev/X894E8)
+        Registered 'on', 'in', 'out' callbacks will be executed in turn per nested loop.
 
-        Calculate iterations `self.n * self.n * len(self.RngA) * len(self.RngB)`
+        Examples:
+        ```
+            # Calculate iterations
+            self.n * self.n * len(self.RngA) * len(self.RngB)
+        ````
         '''
 
         i = int(0)  # Cumulative position within nested loop -- equiv to `len(self.Points)`
         k = int(0)  # Dimension count
 
         for k1 in self.RngK:
-            # Break after first iteration
+            self.Events.publish('k1.on', k1, i, k)
+            self.Events.publish('k1.in', k1, i, k)
+
+            # Break out first iteration
             # if k1 == self.RngK[1]: break
 
             for k2 in self.RngK:
+                self.Events.publish('k2.on', k1, k2, i, k)
+                self.Events.publish('k2.in', k1, k2, i, k)
+
+                # Break out first iteration
                 # if k2 == self.RngK[1]: break
 
-                for op in builder['before']:
-                    op()
-
                 for a in self.RngA:
+                    self.Events.publish('a.on', k1, k2, a, i, k)
+                    self.Events.publish('a.in', k1, k2, a, i, k)
+
                     for b in self.RngB:
                         if (a == -1 and k1 == 0 and k2 == 0): k += 1
 
-                        z1 = self.ComplexZ1(a, b, self.n, k1)
-                        z2 = self.ComplexZ2(a, b, self.n, k2)
+                        self.Events.publish('b.on', k1, k2, a, b, i, k)
 
-                        # Calculate point coords
-                        x = self.Scale * (z1.real)
-                        y = self.Scale * (z2.real)
-                        z = self.Scale * ((
-                            cos(self.Alpha) * z1.imag +
-                            sin(self.Alpha) * z2.imag
-                        ))
-
-                        # TODO Confirm; are we always moving right to left?
-                        point = Point3d(x, y, z)
+                        point = self.Point(k1, k2, a, b)
                         self.Points.append(point)
 
-                        for op in builder['build']:
-                            op(a, b, i, k, point)
+                        self.Events.publish('b.in', k1, k2, a, b, i, k, point)
+                        self.Events.publish('b.out', k1, k2, a, b, i, k)
 
                         # Increment loop position
                         i += 1
 
-                for op in builder['after']:
-                    op()
+                    self.Events.publish('a.out', k1, k2, a, i, k)
+
+                self.Events.publish('k2.out', k1, k2, i, k)
+
+            self.Events.publish('k1.out', k1, i, k)
 
 
 def Halt():
@@ -370,8 +487,7 @@ def Halt():
     In lieu of MacOS debugger this will have to do.
     '''
     if rs.GetBoolean('Proceed',  ('Proceed?', 'No', 'Yes'), (True)) is None:
-        return
-
+        return None
 
 def GenerateMatrix(inc=15):
     '''
@@ -384,9 +500,9 @@ def Run():
     Alpha = rs.GetReal('Degree', 1.0, 0.0, 1.0)
     Density = rs.GetReal('Density', 0.1, 0.01, 0.2)
     Scale = rs.GetInteger('Scale', 100, 1, 100)
-    Type = rs.GetInteger('Type', 4, 1, 4)
+    Builder = rs.GetInteger('Type', 1, 1, 4)
 
-    CalabiYau(n, Alpha, Density, Scale).Build(Type)
+    CalabiYau(n, Alpha, Density, Scale, Builder).Build()
 
 
 rs.EnableRedraw(True)
