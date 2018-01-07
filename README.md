@@ -24,7 +24,7 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
 
 [](http://developer.rhino3d.com/guides/rhinopython/primer-101/)
 
-1. [Points](/lib/calabi/plot.py) [[Source](http://www.tanjiasi.com/surface-design/)]
+1. [Points](/lib/calabi/manifold.py) [[Source](http://www.tanjiasi.com/surface-design/)]
 
 ### Mathematica
 

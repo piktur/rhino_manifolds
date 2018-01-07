@@ -40,4 +40,8 @@ Apparently Top View + Export Selected is better suited to line export [Source](h
 - `RotateCamera()`
 
 - `RotateView()`
+
+## Manipulate Render Light Source
+[](http://v5.rhino3d.com/forum/topics/rhino-5-artistic-display-mode-get-flat-unshaded-render-for-a-cell?commentId=6377196%3AComment%3A129723)
+[](https://www.youtube.com/watch?v=XKR-KxiSYSY)
 '''
