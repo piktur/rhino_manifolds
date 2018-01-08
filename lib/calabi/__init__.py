@@ -28,7 +28,7 @@ def Run():
     Alpha = rs.GetReal('Degree', 1.0, 0.0, 1.0)
     Density = rs.GetReal('Density', 0.1, 0.01, 0.2)
     Scale = rs.GetInteger('Scale', 100, 1, 100)
-    Builder = rs.GetInteger('Type', 2, 1, 4)
+    Builder = rs.GetInteger('Type', 1, 1, 4)
 
     manifold.Manifold(n, Alpha, Density, Scale, Builder).Build()
 

@@ -33,8 +33,9 @@ class PointCloudBuilder(Builder):
 
     def Render(self, cy, *args):
         for point in cy.Points:
+            return
             # self.__rendered__(doc.Objects.AddPoint(Point3d(*point)))
-            self.__rendered__(doc.Objects.AddPoint(point))
+            # self.__rendered__(doc.Objects.AddPoint(point))
 
 
 class MeshBuilder(Builder):

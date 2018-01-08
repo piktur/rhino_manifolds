@@ -1,5 +1,7 @@
 from math import cos, sin, pi
-from rhinoscriptsyntax import frange
+from scriptcontext import doc
+# from rhinoscriptsyntax import AddObjectsToGroup, AddGroup, AddInterpCurve, frange
+import rhinoscriptsyntax as rs
 from Rhino.Geometry import Point3d
 
 from events import EventHandler
@@ -21,74 +23,135 @@ class Segment:
     Attributes:
         Meshes : list<Rhino.Geometry.Mesh>
     '''
-    __slots__ = ['Points', 'Curves', 'Meshes', 'Surfaces']
+    __slots__ = [
+        'Points', 'Curves', 'Meshes', 'Surfaces',
+        'C1', 'C2', 'C3', 'C4', 'U', 'V', '__built__'
+    ]
 
-    # def __init__(self, cy):
-    #     Builder.__init__(self, cy)
-    #     self.C1 = None  # bound_start
-    #     self.C2 = None  # bound_end
-    #     self.C3 = None  # curve_outer
-    #     self.C4 = None  # curve_inner
-    #     self.SubCurves = None
-    #     self.SubPoints = None
-    #     self.Curves = []
-    #     self.Breps = []
-    #     self.U = []
-    #     self.V = []
-    #
-    # def __listeners__(self):
-    #     return {
-    #         'k1.on': [self.Before],
-    #         'a.in': [self.Build]
-    #     }
-    #
-    # def Before(self, cy, *args):
-    #     # k1, k2, a = args
-    #
-    #     self.C1 = []
-    #     self.C2 = []
-    #     self.C3 = []
-    #     self.C4 = []
-    #     self.SubCurves = []
-    #     self.SubPoints = []
-    #     # self.V.append([])
-    #     self.U.append([])
-    #
-    # def Build(self, cy, *args):
-    #     '''
-    #     TODO Ensure domain corner anchored to centre point
-    #     TOOD Group points by surface domain
-    #     TODO Group quad surface curves
-    #     TODO Fit surface to domain points
-    #     '''
-    #     k1, k2, a, b, point = args
-    #
-    #     self.SubPoints.append(point)
-    #
-    #     u = self.U[-1]
-    #     # self.V[-1]
-    #
-    #     if a == cy.RngA[0]:
-    #         self.C4.append(point)
-    #         # u.append(point)
-    #         # v.append(point)
-    #     elif a == cy.RngA[-1]:
-    #         self.C3.append(point)
-    #         # u.append(point)
-    #         # v.append(point)
-    #     elif b == cy.RngB[0]:  # is this necessary?
-    #         self.C1.append(point)
-    #     elif b == cy.RngB[-1]:
-    #         self.C2.append(point)
-    #
-    #     # TODO do we need to be adding this to the front of the array arr.insert(0, val)
-    #     if a == cy.RngA[0] or a == cy.RngA[-1]:
-    #         u.append(point)
-    #         # v.append(point)
-    #         if b == cy.RngB[0]:
-    #             self.C1.append(point)
-    #         elif b == cy.RngB[-1]:
-    #             self.C2.append(point)
+    def __init__(self, cy):
+        self.CalabiYau = cy
+        self.Points = []
+        self.Curves = []
+        self.VCurves = []
+        self.Meshes = []
+        self.Surfaces = []
+        self.C1 = []  # bound_start
+        self.C2 = []  # bound_end
+        self.C3 = []  # curve_outer
+        self.C4 = []  # curve_inner
+        self.U = []
+        self.V = []
+        self.BPos = -1
+        self.__built__ = False
+
+    def AddCurve(self):
+        points = []
+        self.Curves.append(points)
+        return points
+
+    def GetCurve(self, i=-1):
+        try:
+            return self.Curves[i]
+        except IndexError:
+            return
+
+    def AddVCurve(self):
+        points = []
+        self.VCurves.append(points)
+        return points
+
+    def GetVCurve(self, i): # -1
+        try:
+            return self.VCurves[i]
+        except IndexError:
+            return
+
+    def Build(self, cy, *args):
+        '''
+        TODO Ensure domain corner anchored to centre point
+        TOOD Group points by surface domain
+        TODO Group quad surface curves
+        TODO Fit surface to domain points
+        '''
+        # if self.__built__:
+        #     return self
+
+        # k1, k2, a, b, point = args
+        #
+        # if b == cy.RngB[0]:
+        #     self.AddCurve()
+        #     self.BPos = -1
+        # else:
+        #     self.BPos -= 1
+        #
+        # # if a == cy.RngA[0] or a == cy.RngA[-1]: self.AddVCurve()
+        # # if k2 == cy.RngK[0]: self.AddVCurve()
+        # # if a == cy.RngA[0]: self.AddVCurve()
+        #
+        # # We will need to find the correct VCurve there will be one per b
+        #
+        # # if a == cy.RngA[0] or a == cy.RngA[-1]:
+        # #     try:
+        # #         self.GetVCurve().append(point)
+        # #     except AttributeError:
+        # #         pass
+        #
+        # # if b == cy.RngB[0]:
+        # try:
+        #     self.GetCurve(-1).append(point)
+        #     self.GetVCurve(self.BPos).append(point)
+        # except AttributeError:
+        #     pass
+        #
+        # if a == cy.RngA[0]:
+        #     self.C4.append(point)
+        #     # u.append(point)
+        #     # v.append(point)
+        # elif a == cy.RngA[-1]:
+        #     self.C3.append(point)
+        #     # u.append(point)
+        #     # v.append(point)
+        # elif b == cy.RngB[0]:  # is this necessary?
+        #     self.C1.append(point)
+        # elif b == cy.RngB[-1]:
+        #     self.C2.append(point)
+        #
+        # # TODO do we need to be adding this to the front of the array arr.insert(0, val)
+        # if a == cy.RngA[0] or a == cy.RngA[-1]:
+        #
+        #     # u.append(point)
+        #     # v.append(point)
+        #     if b == cy.RngB[0]:
+        #         self.C1.append(point)
+        #     elif b == cy.RngB[-1]:
+        #         self.C2.append(point)
+
+        # self.__built__ = True
+        return self
+
+    def Fin(self):
+        # ids = []
+
+        for points in self.Curves:
+            try:
+                curve = rs.AddInterpCurve(points)
+            except:
+                return None
+            # ids.append(curve)
+
+        for points in self.VCurves:
+            try:
+                curve = rs.AddInterpCurve(points)
+                # print curve.Id
+                # ids.append(curve)
+            except:
+                return None
+
+        # strGroup = rs.AddGroup("NewGroup")
+        # rs.AddObjectsToGroup(ids, strGroup)
+        # index = doc.Groups.Add(ids)
+
+        # doc.Views.Redraw()
 
 
 class Manifold:
@@ -134,12 +197,15 @@ class Manifold:
         self.MaxB = float(pi / 2)
         self.StepB = self.MaxB * self.Step
         self.RngK = range(self.n)
-        self.RngA = frange(float(-1), self.MaxA, self.Step)
-        self.RngB = frange(float(0), self.MaxB, self.StepB)
+        self.RngA = rs.frange(float(-1), self.MaxA, self.Step)
+        self.RngB = rs.frange(float(0), self.MaxB, self.StepB)
 
         self.SegCnt = 0
         self.PntCnt = 0
-        self.Segments = []
+        self.InnerSegCnt = 0
+        self.OuterSegCnt = 0
+        self.InnerSegments = []
+        self.OuterSegments = []
         self.Points = []
         self.Builder = builder.__all__[type]
 
@@ -157,13 +223,26 @@ class Manifold:
         self.ParametricPlot3D()
         builder.Render(self)
 
+    def GetSegment(self, i=-1):
+        return self.InnerSegments[i]
+
     def AddSegment(self, k1, k2, a):
-        if a == self.RngA[0] and k2 == self.RngK[0] and k1 == self.RngK[0]:
-            segment = Segment()
-            self.Segments.append(segment)
-            self.SegCnt += 1
-            print self.SegCnt
-            return segment
+        # if a == self.RngA[0] and k2 == self.RngK[0] and k1 == self.RngK[0]
+        segment = Segment(self)
+        self.OuterSegments.append(segment)
+        self.OuterSegCnt += 1
+        return segment
+        # else:
+        #     return self.GetSegment()
+
+    def AddInnerSegment(self, k1, k2, a):
+        # if a == self.RngA[0] and k2 == self.RngK[0] and k1 == self.RngK[0]
+        segment = Segment(self)
+        self.InnerSegments.append(segment)
+        self.InnerSegCnt += 1
+        return segment
+        # else:
+        #     return self.GetSegment()
 
     def Point(self, *args):
         '''
@@ -199,18 +278,105 @@ class Manifold:
                 # Break out first iteration
                 # if k2 == self.RngK[1]: break
 
-                segment = self.AddSegment(k1, k2, a)
+                # TODO Add group quad bound group containing inner curves
+                #
+                #
+                outerSeg = self.AddSegment(k1, k2, None)
+                APos = 1
 
                 for a in self.RngA:
                     self.Events.publish('a.on', self, k1, k2, a)
                     self.Events.publish('a.in', self, k1, k2, a)
 
+                    # innerSeg = self.AddInnerSegment(k1, k2, a)
+
+
+                    APos += 1
+                    outerSeg.AddCurve()
+                    outerSeg.BPos = 0
+
                     for b in self.RngB:
                         self.Events.publish('b.on', self, k1, k2, a, b)
 
                         point = self.Point(k1, k2, a, b)
+                        # if round(point.X) == round(24.139) and round(point.Y) == round(-18.384) and round(point.Z) == round(116.073):
+                        #     print (k1, k2, a, b)
+
                         self.Points.append(point)
                         self.PntCnt += 1
+
+                        outerSeg.Points.append(point)
+
+                        #  and b <= self.RngB[3]
+                        # if a == self.RngA[0]: # or a == self.RngA[1]:
+                        #     doc.Objects.AddPoint(point)
+                        #     print (k1, k2, a, b)
+                        #     if rs.GetBoolean('Proceed',  ('Proceed?', 'No', 'Yes'), (True)) is None: return
+                        # else:
+                        #     return
+
+                        if a == self.RngA[0]:
+                            outerSeg.AddVCurve() # VCurves.append([])
+
+                        # if b == self.RngB[0]:
+                        #     outerSeg.AddCurve()
+                        #     outerSeg.BPos = 0
+                        # else:
+                        outerSeg.BPos += 1
+
+                        # if a == self.RngA[0] or a == self.RngA[-1]: self.AddVCurve()
+                        # if k2 == self.RngK[0]: self.AddVCurve()
+                        # if a == self.RngA[0]: self.AddVCurve()
+
+                        # if a == self.RngA[0] or a == self.RngA[-1]:
+                        #     try:
+                        #         self.GetVCurve().append(point)
+                        #     except AttributeError:
+                        #         pass
+
+                        try:
+                            # if a == self.RngA[0] and b == self.RngB[0]:
+                            #     outerSeg.GetCurve(0).append(point)
+                            # else:
+                            outerSeg.GetCurve(-1).append(point)
+
+                            # self.SegCnt * segment.BPos
+                            # segment.GetVCurve(-segment.BPos).append(point)
+                        except AttributeError:
+                            # print (k1, k1, APos, BPos)
+                            pass
+
+                        try:
+                            if b == self.RngB[-1]:
+                                # outerSeg.GetVCurve(-outerSeg.BPos).append(point)
+                                None
+                            else:
+                                outerSeg.GetVCurve(-outerSeg.BPos).append(point)
+                        except AttributeError:
+                            print (k1, k1, APos, outerSeg.BPos)
+                            pass
+
+                        if a == self.RngA[0]:
+                            outerSeg.C4.append(point)
+                        elif a == self.RngA[-1]:
+                            outerSeg.C3.append(point)
+                        elif b == self.RngB[0]:  # is this necessary?
+                            outerSeg.C1.append(point)
+                        elif b == self.RngB[-1]:
+                            outerSeg.C2.append(point)
+
+                        # TODO do we need to be adding this to the front of the array arr.insert(0, val)
+                        if a == self.RngA[0] or a == self.RngA[-1]:
+                            if b == self.RngB[0]:
+                                outerSeg.C1.append(point)
+                            elif b == self.RngB[-1]:
+                                outerSeg.C2.append(point)
+
+                        # innerSeg.Build(self, k1, k2, a, b, point)
+
+                        # if b == self.RngB[-1]:
+                        #     outerSeg.AddCurve()
+                        #     outerSeg.BPos = 0
 
                         self.Events.publish('b.in', self, k1, k2, a, b, point)
                         self.Events.publish('b.out', self, k1, k2, a, b)
@@ -220,3 +386,39 @@ class Manifold:
                 self.Events.publish('k2.out', self, k1, k2)
 
             self.Events.publish('k1.out', self, k1)
+
+        # for seg in self.InnerSegments:
+        #     print len(seg.VCurves)
+        #     # seg.Fin()
+
+        for seg in self.OuterSegments:
+            group = rs.AddGroup('NewGroup')
+            objects = []
+
+            for points in seg.VCurves:
+                try:
+                    # print len(points)
+                    curve = rs.AddInterpCurve(points)
+                    objects.append(curve)
+                except: None
+
+                # doc.Views.Redraw()
+
+            for points in seg.Curves:
+                try:
+                    curve = rs.AddInterpCurve(points)
+                    objects.append(curve)
+                except: None
+
+                doc.Views.Redraw()
+
+            # for points in seg.C1, seg.C2, seg.C3, seg.C4:
+            #     curve = rs.AddInterpCurve(points)
+            #     objects.append(curve)
+
+            rs.AddObjectsToGroup(objects, group)
+
+            index = doc.Groups.Add(objects)
+
+
+            # return
