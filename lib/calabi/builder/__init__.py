@@ -33,23 +33,24 @@ class PointCloudBuilder(Builder):
 
     def Render(self, cy, *args):
         for point in cy.Points:
-            return
             # self.__rendered__(doc.Objects.AddPoint(Point3d(*point)))
-            # self.__rendered__(doc.Objects.AddPoint(point))
+            self.__rendered__(doc.Objects.AddPoint(point))
 
 
 class MeshBuilder(Builder):
-    __slots__ = ['Mesh', 'SubMesh']
+    __slots__ = ['Mesh', 'SubMesh', 'Meshes']
 
     def __init__(self, cy):
         Builder.__init__(self, cy)
         self.Mesh = None
         self.SubMesh = None
+        self.Cnt = 0
         self.Meshes = []
 
     def __listeners__(self):
         return {
             'k2.on': [self.BuildMesh],
+            'b.on': [self.Increment],
             'b.in': [self.BuildSubMesh],
             'k2.out': [self.JoinMesh]
         }
@@ -58,6 +59,12 @@ class MeshBuilder(Builder):
         # k1, k2, a = args
 
         self.Mesh = Mesh()
+
+    def Increment(self, *args):
+        cy, k1, k2, a, b = args
+
+        if a == cy.RngA[0] and k2 == cy.RngK[0] and k1 == cy.RngK[0]:
+            self.Cnt += 1
 
     def BuildSubMesh(self, cy, *args):
         k1, k2, a, b, point = args
@@ -69,8 +76,8 @@ class MeshBuilder(Builder):
                 for i in [
                     cy.PntCnt,
                     (cy.PntCnt - 1),
-                    (cy.PntCnt - cy.SegCnt - 1),
-                    (cy.PntCnt - cy.SegCnt)
+                    (cy.PntCnt - self.Cnt - 1),
+                    (cy.PntCnt - self.Cnt)
                 ]:
                     try:
                         # self.SubMesh.Vertices.Add(*cy.Points[i])
@@ -93,7 +100,10 @@ class MeshBuilder(Builder):
 
     def Render(self, cy, *args):
         for mesh in self.Meshes:  # cy.Meshes:
-            self.__rendered__(doc.Objects.AddMesh(mesh))
+            doc.Objects.AddMesh(mesh)
+            # self.__rendered__(doc.Objects.AddMesh(mesh))
+
+        doc.Views.Redraw()
 
 
 class CurveBuilder(Builder):

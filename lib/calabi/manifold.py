@@ -77,10 +77,6 @@ class Segment:
         if self.__built__:
             return self
 
-        self.__built__ = True
-        return self
-
-    def Fin(self):
         group = rs.AddGroup('Segment')
         objects = []
 
@@ -102,6 +98,9 @@ class Segment:
         doc.Groups.Add(objects)
 
         doc.Views.Redraw()
+
+        self.__built__ = True
+        return self
 
 
 class Manifold:
@@ -128,7 +127,7 @@ class Manifold:
     '''
 
     __slots__ = ['n', 'Alpha', 'Step', 'Scale', 'MaxA', 'MaxB', 'StepB',
-                 'RngK', 'RngA', 'RngB', 'SegCnt', 'PntCnt' 'Segs', 'Points']
+                 'RngK', 'RngA', 'RngB', 'SegCnt', 'PntCnt' 'Segments', 'Points']
 
     def __init__(self, n=1, deg=1.0, step=0.1, scale=1, type=4):
         '''
@@ -151,10 +150,15 @@ class Manifold:
         self.RngB = rs.frange(0, self.MaxB, self.StepB)
 
         self.SegCnt = 0
+        self.ACnt = 0
         self.PntCnt = 0
         self.Segments = []
         self.Points = []
-        self.Builder = builder.__all__[type]
+
+        if type == 5:
+            self.Builder = None
+        else:
+            self.Builder = builder.__all__[type]
 
         # Setup Events registry
         self.Events = EventHandler()
@@ -166,12 +170,16 @@ class Manifold:
         '''
         Build Rhino objects and add to document
         '''
-        builder = self.Builder(self)
-        # Register listeners if defined
-        if hasattr(self.Builder, '__listeners__') and callable(self.Builder.__listeners__):
-            self.Events.register(builder.__listeners__())
-        self.ParametricPlot3D()
-        builder.Render(self)
+        if self.Builder is None:
+            self.ParametricPlot3D()
+            self.Default()
+        else:
+            builder = self.Builder(self)
+            # Register listeners if defined
+            if hasattr(self.Builder, '__listeners__') and callable(self.Builder.__listeners__):
+                self.Events.register(builder.__listeners__())
+            self.ParametricPlot3D()
+            builder.Render(self)
 
     def GetSegment(self, i=-1):
         return self.InnerSegments[i]
@@ -326,6 +334,7 @@ class Manifold:
 
             self.Events.publish('k1.out', self, k1)
 
+    def Default(self):
         for i, seg in enumerate(self.Segments):
             # Add labeled points to document
             # points = rs.SortPoints(seg.Edges)
@@ -333,7 +342,6 @@ class Manifold:
                 for i, point in enumerate(seg.Edges):
                     point = rs.AddPoint(point)
                     dot = rs.AddTextDot(str(i), point)
-
 
             # Segment Edges
             group = rs.AddGroup('Edges' + str(i))

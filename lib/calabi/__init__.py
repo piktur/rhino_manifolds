@@ -29,7 +29,7 @@ def Run():
     Alpha = rs.GetReal('Degree', 1.0, 0.0, 1.0)
     Density = rs.GetReal('Density', 0.1, 0.01, 0.4)
     Scale = rs.GetInteger('Scale', 100, 1, 100)
-    Builder = rs.GetInteger('Type', 1, 1, 4)
+    Builder = rs.GetInteger('Type', 5, 1, 5)
     manifold.Manifold(n, Alpha, Density, Scale, Builder).Build()
 
     doc.Views.Redraw()
