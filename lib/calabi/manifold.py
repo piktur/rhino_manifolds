@@ -146,7 +146,7 @@ class Manifold:
         self.MaxB = pi / 2
         self.StepB = self.MaxB * self.Step
         self.RngK = range(self.n)
-        self.RngA = rs.frange(-1, self.MaxA, self.Step)
+        self.RngA = rs.frange(-1, self.MaxA, 1)  # self.Step
         self.RngB = rs.frange(0, self.MaxB, self.StepB)
 
         self.SegCnt = 0
@@ -172,7 +172,7 @@ class Manifold:
         '''
         if self.Builder is None:
             self.ParametricPlot3D()
-            self.Default()
+            self.Render()
         else:
             builder = self.Builder(self)
             # Register listeners if defined
@@ -249,7 +249,7 @@ class Manifold:
             self.n * self.n * len(self.RngA) * len(self.RngB)
         ````
         '''
-        for k1 in self.RngK:
+        for k1 in range(1):  # self.RngK
             self.Events.publish('k1.on', self, k1)
             self.Events.publish('k1.in', self, k1)
 
@@ -334,69 +334,80 @@ class Manifold:
 
             self.Events.publish('k1.out', self, k1)
 
-    def Default(self):
+    def Dots(self, i, seg):
+        # Add labeled points to document
+        # points = rs.SortPoints(seg.Edges)
+        for i, point in enumerate(seg.Edges):
+            point = rs.AddPoint(point)
+            dot = rs.AddTextDot(str(i), point)
+
+    def Edges(self, i, seg):
+        # Segment Edges
+        group = rs.AddGroup('Edges' + str(i))
+        lines = []
+        line_ids = []
+
+        for points in seg.C3, seg.C4:
+            curve = self.CreateInterpolatedCurve(points)
+            id = doc.Objects.AddCurve(curve)
+            line_ids.append(id)
+            lines.append(curve)
+
+        for points in seg.C1, seg.C2:
+            curve = self.CreatePolyline(points)
+            id = doc.Objects.AddPolyline(curve)
+            line_ids.append(id)
+            lines.append(curve)
+
+        rs.AddObjectsToGroup(line_ids, group)
+        doc.Groups.Add(line_ids)
+
+    def Curves(self, i, seg):
+        # Inner curves
+        group = rs.AddGroup('Curves' + str(i))
+        curves = []
+        curve_ids = []
+
+        for i, points in enumerate(seg.Curves):
+            if i % 2 == 1:
+                try:
+                    curve = self.CreateInterpolatedCurve(points)
+                    id = doc.Objects.AddCurve(curve)
+                    curve_ids.append(id)
+                    curves.append(curve)
+                except:
+                    None
+
+        for i, points in enumerate(seg.VCurves):
+            if i % 2 == 1:
+                try:
+                    curve = self.CreateInterpolatedCurve(points)
+                    id = doc.Objects.AddCurve(curve)
+                    curve_ids.append(id)
+                    curves.append(curve)
+                except:
+                    None
+
+        rs.AddObjectsToGroup(curve_ids, group)
+        doc.Groups.Add(curve_ids)
+
+    def Brep(self, i, seg):
+        # Add Boundary Representation from lines
+        # TODO incompatible with Polyine
+        # brep = Brep.CreateEdgeSurface(lines)
+        # doc.Objects.AddBrep(brep)
+        pass
+
+    def Render(self):
         for i, seg in enumerate(self.Segments):
-            # Add labeled points to document
-            # points = rs.SortPoints(seg.Edges)
-            if rs.GetBoolean('Add Labeled Points',  ('Proceed?', 'No', 'Yes'), (True)) is not None:
-                for i, point in enumerate(seg.Edges):
-                    point = rs.AddPoint(point)
-                    dot = rs.AddTextDot(str(i), point)
+            self.Edges(i, seg)
 
-            # Segment Edges
-            group = rs.AddGroup('Edges' + str(i))
-            lines = []
-            line_ids = []
+            # if rs.GetBoolean('Add Inner Curves',  ('Proceed?', 'No', 'Yes'), (True)) is not None:
+            #     self.Curves(i, seg)
 
-            for points in seg.C3, seg.C4:
-                curve = self.CreateInterpolatedCurve(points)
-                id = doc.Objects.AddCurve(curve)
-                line_ids.append(id)
-                lines.append(curve)
+            # if rs.GetBoolean('Add Labeled Points',  ('Proceed?', 'No', 'Yes'), (True)) is not None:
+            #     self.Dots(i, seg)
 
-            for points in seg.C1, seg.C2:
-                curve = self.CreatePolyline(points)
-                id = doc.Objects.AddPolyline(curve)
-                line_ids.append(id)
-                lines.append(curve)
+            # self.Brep(i, seg)
 
-            rs.AddObjectsToGroup(line_ids, group)
-            doc.Groups.Add(line_ids)
-
-
-            # Add Boundary Representation from lines
-            # TODO incompatible with Polyine
-            # brep = Brep.CreateEdgeSurface(lines)
-            # doc.Objects.AddBrep(brep)
-
-
-            # Inner curves
-            if rs.GetBoolean('Add Inner Curves',  ('Proceed?', 'No', 'Yes'), (True)) is not None:
-                group = rs.AddGroup('Curves' + str(i))
-                curves = []
-                curve_ids = []
-
-                for i, points in enumerate(seg.Curves):
-                    if i % 2 == 1:
-                        try:
-                            curve = self.CreateInterpolatedCurve(points)
-                            id = doc.Objects.AddCurve(curve)
-                            curve_ids.append(id)
-                            curves.append(curve)
-                        except:
-                            None
-
-                for i, points in enumerate(seg.VCurves):
-                    if i % 2 == 1:
-                        try:
-                            curve = self.CreateInterpolatedCurve(points)
-                            id = doc.Objects.AddCurve(curve)
-                            curve_ids.append(id)
-                            curves.append(curve)
-                        except:
-                            None
-
-                rs.AddObjectsToGroup(curve_ids, group)
-                doc.Groups.Add(curve_ids)
-
-            doc.Views.Redraw()
+        doc.Views.Redraw()

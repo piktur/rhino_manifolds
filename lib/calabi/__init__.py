@@ -33,9 +33,3 @@ def Run():
     manifold.Manifold(n, Alpha, Density, Scale, Builder).Build()
 
     doc.Views.Redraw()
-
-
-rs.EnableRedraw(True)
-
-if __name__ == '__main__':
-    Run()
