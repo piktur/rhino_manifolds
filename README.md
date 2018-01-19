@@ -24,6 +24,7 @@ the open-edged version of the quintic in Figure 6 contains
 enough information to check that it’s a consistent local
 depiction of the complete manifold and so is still a sufficient
 (although not ideal) representation.
+
 > -- <cite>[Hanson, Andrew J.][1]</cite>
 
 [](https://www.semanticscholar.org/paper/A-Construction-for-Computer-Visualization-of-Certa-Hanson/8861c0026a89af89b19e9df7267846ec056461c1?citingPapersSort=is-influential&citingPapersLimit=10&citingPapersOffset=10&citedPapersSort=is-influential&citedPapersLimit=10&citedPapersOffset=0)

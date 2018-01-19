@@ -2,6 +2,7 @@ import System.Guid
 import System.Enum
 from math import pi
 from scriptcontext import doc
+import rhinoscriptsyntax as rs
 from Rhino.Geometry import NurbsCurve, NurbsSurface, Curve, Brep, Vector3d, CurveKnotStyle, Mesh, Point3d, ControlPoint
 from Rhino.Collections import Point3dList, CurveList
 
@@ -98,19 +99,46 @@ class MeshBuilder(Builder):
 
 
 class CurveBuilder(Builder):
+    __slots__ = ['Edges', 'A', 'B', 'C', 'D']
+
     def __init__(self, cy):
         Builder.__init__(self, cy)
+        self.Edges = None
+        self.A = None
+        self.B = None
+        self.C = None
+        self.D = None
 
-    def BuildSurfaceEdges(self, cy, *args):
-        cy.Patch.Edges = map(
-            self.CreateInterpolatedCurve,
-            cy.Patch.C1,
-            cy.Patch.C2,
-            cy.Patch.C3,
-            cy.Patch.C4
+    def __listeners__(self):
+        return {
+            'k2.in': [self.AddEdges],
+            'b.in': [self.PlotEdges],
+            'k2.out': [self.BuildEdges, self.BuildEdgeSurface]
+        }
+
+    def AddEdges(self, cy, *args):
+        self.Edges = CurveList()
+        self.A = []
+        self.B = []
+        self.C = []
+        self.D = []
+
+    def BuildEdges(self, cy, *args):
+        for points in (self.A, self.B, self.C, self.D):
+            self.Edges.Add(self.BuildInterpolatedCurve(points))
+
+    def BuildEdgeSurface(self, cy, *args):
+        surface, err = NurbsSurface.CreateNetworkSurface(
+            self.Edges,  # IEnumerable<Curve> curves,
+            1,  # int continuity along edges, 0 = loose, 1 = pos, 2 = tan, 3 = curvature
+            0.0001,  # double edgeTolerance,
+            0.1,  # double interiorTolerance,
+            1.0  # double angleTolerance,
         )
 
-    def PlotSurfaceEdges(self, cy, *args):
+        cy.Patch.Surfaces.append(surface)
+
+    def PlotEdges(self, cy, *args):
         k1, k2, a, b = args
 
         '''
@@ -192,43 +220,19 @@ class CurveBuilder(Builder):
                 cy.Patch.C2.append(cy.Point)
         ```
 
-        Example 3
-        ```
-            for phase in cy.Phases:
-                k1, k2 = phase
+        '''
 
-                Crvs = CurveList()
-                CrvA = []
-                CrvB = []
-                CrvC = []
-                CrvD = []
+        if a == cy.RngU[0]:
+            self.A.append(cy.Point)
+        if a == cy.RngU[-1]:
+            self.C.append(cy.Point)
 
-                for a in RngU:
-                    if a == RngU[0]:
-                        CrvA = CreateInterpolatedCurve(map(lambda b: Point(k1, k2, a, b), RngV))
-                    if a == RngU[-1]:
-                        CrvC = CreateInterpolatedCurve(map(lambda b: Point(k1, k2, a, b), RngV))
+        if b == cy.RngV[0]:
+            self.B.append(cy.Point)
+        if b == cy.RngV[-1]:
+            self.D.append(cy.Point)
 
-                    for b in RngV:
-                        if b == RngV[0]:
-                            CrvB.append(Point(k1, k2, a, b))
-                        if b == RngV[-1]:
-                            CrvD.append(Point(k1, k2, a, b))
-
-
-                Crvs.Add(CrvA)
-                Crvs.Add(CrvB)
-                Crvs.Add(CrvC)
-                Crvs.Add(CrvD)
-
-                surf, err = NurbsSurface.CreateNetworkSurface(
-                    Crvs,  # IEnumerable<Curve> curves,
-                    0,  # int continuity along edges, 0 = loose, 1 = pos, 2 = tan, 3 = curvature
-                    0.0001,  # double edgeTolerance,
-                    0.1,  # double interiorTolerance,
-                    1.0  # double angleTolerance,
-                )
-        ```
+        '''
 
         Example 4
         ```
@@ -315,6 +319,38 @@ class CurveBuilder(Builder):
         ```
         '''
 
+    def BuildInterpolatedCurve(self, points):
+        '''
+        TODO rescue Exception raised if insufficient points
+
+        [](http://developer.rhino3d.com/samples/rhinocommon/surface-from-edge-curves/)
+        `rs.AddInterpCurve`
+        '''
+        points = rs.coerce3dpointlist(points, True)
+
+        degree = 3
+
+        start_tangent = Vector3d.Unset
+        start_tangent = rs.coerce3dvector(start_tangent, True)
+
+        end_tangent = Vector3d.Unset
+        end_tangent = rs.coerce3dvector(end_tangent, True)
+
+        knotstyle = System.Enum.ToObject(CurveKnotStyle, 0)
+
+        curve = Curve.CreateInterpolatedCurve(points, degree, knotstyle, start_tangent, end_tangent)
+
+        if curve:
+            return curve
+
+        raise Exception('Unable to CreateInterpolatedCurve')
+
+    def Render(self, cy, *args):
+        for subDivisions in cy.Surfaces():
+            for surface in subDivisions:
+                if surface:
+                    self.__rendered__(doc.Objects.AddSurface(surface))
+
 
 # TODO Move Curve behaviour into CurveBuilder and inherit
 class SurfaceBuilder(Builder):
@@ -352,7 +388,7 @@ class SurfaceBuilder(Builder):
             'b.in': [self.PlotSurface],  # self.PlotSurfaceEdges
             'b.out': [self.IncrementV],
             'a.out': [self.IncrementU, self.AddSurfaceSubdivision],
-            'k2.out': [self.BuildSurface]  # self.BuildSurfaceEdges, self.BuildBrep
+            'k2.out': [self.BuildSurface, self.JoinSurfaces]  # self.BuildSurfaceEdges, self.BuildBrep
         }
 
     def AddSurface(self, *args):
@@ -409,35 +445,18 @@ class SurfaceBuilder(Builder):
         # # cy.Patch.Surface = surface
         cy.Patch.Surfaces.append(surface)
 
+    def JoinSurfaces(self, cy, *args):
+        '''
+        TODO
+        '''
+        return
+        # rs.JoinSurfaces(cy.Patch.Surfaces[-2:])
+
     def BuildBrep(self, cy, *args):
         '''
         "Quadratic" Boundary Representation (Brep) from curves
         '''
         cy.Patch.Brep = Brep.CreateEdgeSurface(self.Patch.Edges)
-
-    def BuildInterpolatedCurve(self, points):
-        '''
-        TODO rescue Exception raised if insufficient points
-
-        [](http://developer.rhino3d.com/samples/rhinocommon/surface-from-edge-curves/)
-        `rs.AddInterpCurve`
-        '''
-        points = rs.coerce3dpointlist(points, True)
-
-        start_tangent = Vector3d.Unset
-        start_tangent = rs.coerce3dvector(start_tangent, True)
-
-        end_tangent = Vector3d.Unset
-        end_tangent = rs.coerce3dvector(end_tangent, True)
-
-        knotstyle = System.Enum.ToObject(CurveKnotStyle, 0)
-
-        curve = Curve.CreateInterpolatedCurve(points, 3, knotstyle, start_tangent, end_tangent)
-
-        if curve:
-            return curve
-
-        raise Exception('Unable to CreateInterpolatedCurve')
 
     def Render(self, cy, *args):
         for subDivisions in cy.Surfaces():

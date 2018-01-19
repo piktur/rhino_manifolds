@@ -6,7 +6,7 @@ from scriptcontext import doc
 # from rhinoscriptsyntax import AddObjectsToGroup, AddGroup, frange
 import rhinoscriptsyntax as rs
 from Rhino.Geometry import Point3d
-from Rhino.Collections import Point3dList
+from Rhino.Collections import Point3dList, CurveList
 
 from events import EventHandler
 from export import *
@@ -37,11 +37,11 @@ class Patch:
         self.Surfaces = []
         self.Brep = None
         self.Mesh = None
-        self.Edges = []
-        self.C1 = []  # bound_start
-        self.C2 = []  # bound_end
-        self.C3 = []  # curve_outer
-        self.C4 = []  # curve_inner
+        self.Edges = CurveList()
+        self.C1 = []
+        self.C2 = []
+        self.C3 = []
+        self.C4 = []
         self.__built__ = False
 
 
@@ -111,11 +111,6 @@ class Manifold:
         self.Scale = scale
         self.Offset = float(offset)
 
-        self.Phases = []
-        # NOTE [Figure 5](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) Demonstrates phase occurrence. Build algorithm to group accordingly.
-        for i, k1 in enumerate(self.RngK):
-            for i, k2 in enumerate(self.RngK):
-                self.Phases.append([k1, k2])
         self.U = int(11)
         self.V = int(11)
         self.MinU = -1
@@ -130,6 +125,12 @@ class Manifold:
         self.RngU = rs.frange(self.MinU, self.MaxU, self.StepU)
         self.RngV = rs.frange(self.MinV, self.MaxV, self.StepV)
 
+        self.Phases = []
+
+        # NOTE [Figure 5](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) Demonstrates phase occurrence. Build algorithm to group accordingly.
+        for i, k1 in enumerate(self.RngK):
+            for i, k2 in enumerate(self.RngK):
+                self.Phases.append([k1, k2])
 
         self.Points = []
         self.Point = None

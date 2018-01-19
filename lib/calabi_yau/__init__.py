@@ -16,11 +16,13 @@ import utility
 import builder
 import export
 import manifold
+import layers
 
 reload(utility)
 reload(builder)
 reload(export)
 reload(manifold)
+reload(layers)
 
 
 def Run():
@@ -33,3 +35,4 @@ def Run():
     manifold.Manifold(n, Alpha, Density, Scale, Offset, Builder).Build()
 
     doc.Views.Redraw()
+    layers.Build()

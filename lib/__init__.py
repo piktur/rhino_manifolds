@@ -4,7 +4,6 @@ import export
 import utility
 import calabi_yau as CalabiYau
 
-from Rhino.Geometry import Point3d, NurbsSurface, ControlPoint
 from scriptcontext import doc
 
 reload(CalabiYau)
