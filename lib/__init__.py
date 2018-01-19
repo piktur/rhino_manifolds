@@ -12,7 +12,6 @@ from scriptcontext import doc
 reload(calabi)
 reload(alt)
 
-
 rs.EnableRedraw(True)
 
 if __name__ == '__main__':
