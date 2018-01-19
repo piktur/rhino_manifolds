@@ -1,6 +1,38 @@
 import cmath
 from math import cos, sin, pi
 
+
+# n = 3
+# E = cmath.e
+# I = cmath.sqrt(-1)
+#
+# def u1(a, b):
+#     return complex(0.5 * (E ** (a + I * b) + E ** (-a - I * b)))
+#
+# def u2(a, b):
+#     return complex(0.5 * (E ** (a + I * b) - E ** (-a - I * b)))
+#
+# def z1k(a, b, n, k):
+#     return complex(E ** (k * 2.0 * pi * I / n) * u1(a, b) ** (2.0 / n))
+#
+# def z2k(a, b, n, k):
+#     return complex(E ** (k * 2.0 * pi * I / n) * u2(a, b) ** (2.0 / n))
+#
+# x = float(0)  # Offset
+# y = float(0)  # Offset
+# z = float(0)  # Offset
+# Alpha = float(0.3)
+# t = math.pi / float(4)
+# alpha = Alpha - t
+# # alpha = Alpha * math.pi
+# a = 1
+# b = 1
+# k1 = 1
+# k2 = 3
+# X = z1k(a, b, n, k1).real + x
+# Y = z2k(a, b, n, k2).real + y
+# Z = (cos(alpha) * z1k(a, b, n, k1).imag) + (sin(alpha) * z2k(a, b, n, k2).imag) + z
+
 I = complex(0.0, 1.0)
 
 

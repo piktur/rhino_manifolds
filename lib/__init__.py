@@ -2,19 +2,14 @@ import rhinoscriptsyntax as rs
 import events
 import export
 import utility
-import calabi
-import helicoid
-import alt
+import calabi_yau as CalabiYau
 
 from Rhino.Geometry import Point3d, NurbsSurface, ControlPoint
 from scriptcontext import doc
 
-reload(calabi)
-reload(alt)
+reload(CalabiYau)
 
 rs.EnableRedraw(True)
 
 if __name__ == '__main__':
-    # calabi.Run()
-    # helicoid.Run()
-    alt.Run()
+    CalabiYau.Run()

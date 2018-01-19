@@ -57,27 +57,6 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
 
 1. [Points](/lib/calabi/manifold.py) [[Source](http://www.tanjiasi.com/surface-design/)]
 
-```
-from Rhino import Command
-
-# Execute Rhino Commands
-Command('MergeSrf obj1 obj2 _Enter')
-
-`MergeSrf` > `Rebuild`
-Doesn't work for anything other than n == 2
-
-Per dimension `DupEdges` > ` NetworkSrf` > `Rebuild`
-
-TODO
-Determine Order
-See if we can MergeSrf
-and Rebuild
-
-`SelSrf` > `Intersect` will add curves to demarcate intersection
-
-`Weight`
-```
-
 ### Processing.py
 
 [createGraphics()](http://py.processing.org/reference/createGraphics.html)

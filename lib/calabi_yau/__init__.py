@@ -1,5 +1,4 @@
 '''
-
 Replaces Grasshopper workflow -- execute via `RunPythonScript`
 
 [](http://www.tanjiasi.com/surface-design/)
@@ -29,7 +28,8 @@ def Run():
     Alpha = rs.GetReal('Degree', 1.0, 0.0, 1.0)
     Density = rs.GetReal('Density', 0.1, 0.01, 0.4)
     Scale = rs.GetInteger('Scale', 100, 1, 100)
-    Builder = rs.GetInteger('Type', 5, 1, 5)
-    manifold.Manifold(n, Alpha, Density, Scale, Builder).Build()
+    Offset = rs.GetInteger('Offset', 0, 0)
+    Builder = rs.GetInteger('Type', 4, 1, 5)
+    manifold.Manifold(n, Alpha, Density, Scale, Offset, Builder).Build()
 
     doc.Views.Redraw()

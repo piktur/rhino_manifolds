@@ -19,7 +19,7 @@ class EventHandler:
     def subscribe(self, event, func):
         if not callable(func):
             raise TypeError(str(func) + 'is not callable')
-        if event in self.__registry__ and type(self.__registry__) is list:
+        if event in self.__registry__ and type(self.__registry__[event]) is list:
             self.__registry__[event].append(func)
         else:
             self.__registry__[event] = [func]
