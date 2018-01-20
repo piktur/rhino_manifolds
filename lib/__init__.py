@@ -12,3 +12,4 @@ rs.EnableRedraw(True)
 
 if __name__ == '__main__':
     CalabiYau.Run()
+    doc.Views.Redraw()

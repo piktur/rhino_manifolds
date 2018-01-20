@@ -35,4 +35,4 @@ def Run():
     manifold.Manifold(n, Alpha, Density, Scale, Offset, Builder).Build()
 
     doc.Views.Redraw()
-    layers.Build()
+    # layers.Build()

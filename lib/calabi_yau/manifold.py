@@ -106,7 +106,8 @@ class Manifold:
         #   self.Alpha = deg - t
         #   self.Alpha = deg * t
         #   self.Alpha = deg * pi
-        self.Alpha = deg * pi
+        t = pi / 4
+        self.Alpha = deg * t
         self.Step = step
         self.Scale = scale
         self.Offset = float(offset)
