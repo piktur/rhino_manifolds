@@ -3,19 +3,123 @@ import System.Enum
 from math import pi
 from scriptcontext import doc
 import rhinoscriptsyntax as rs
-from Rhino.Geometry import NurbsCurve, NurbsSurface, Curve, Brep, Vector3d, CurveKnotStyle, Mesh, Point3d, ControlPoint
+from Rhino.Geometry import Brep, ControlPoint, Curve, CurveKnotStyle, Mesh, NurbsCurve, NurbsSurface, Point3d, Vector3d
 from Rhino.Collections import Point3dList, CurveList
+
+from calabi_yau.calc import Calculate
+
+
+class Patch:
+    '''
+    Attributes:
+        Points : Rhino.Collections.Point3dList
+        Surface : Rhino.Geometry.NurbsSurface
+        Surface : list<Rhino.Geometry.NurbsSurface>
+        Brep : Rhino.Geometry.Brep
+        Mesh : Rhino.Geometry.Mesh
+        Edges : list<Rhino.Geometry.NurbsCurve>
+    '''
+    __slots__ = [
+        'CalabiYau', 'Points', 'Surface', 'Surfaces', 'Brep', 'Mesh', 'Edges',
+        '__built__'
+    ]
+
+    def __init__(self, cy):
+        self.CalabiYau = cy
+        self.Points = Point3dList()
+        self.Surfaces = []
+        self.__built__ = False
 
 
 class Builder:
+    '''
+    Attributes:
+        CalabiYau : CalabiYau.Manifold
+        Points : list<Rhino.Geometry.Point3d>
+        Point : Rhino.Geometry.Point3d
+        PointCount : int
+            Cumulative position within `Plot3D` nested loop -- equiv to `len(self.Points)`
+        Patches : list<Patch>
+        Patch : Patch
+        PatchCount : int
+    '''
+    __slots__ = ['CalabiYau',
+                 'Points', 'Point', 'PointCount',
+                 'Patches', 'Patch', 'PatchCount']
+
     def __init__(self, cy):
         self.CalabiYau = cy
+
+        self.Points = []
+        self.Point = None
+        self.PointCount = 0
+
+        self.Patches = []
+        self.Patch = None
+        self.PatchCount = 0
 
     def Build(self, *args, **kwargs):
         return
 
+    def Surfaces(self):
+        return map(lambda e: e.Surfaces, self.Patches)
+
+    def Breps(self):
+        return map(lambda e: e.Brep, self.Patches)
+
+    def Edges(self):
+        return map(lambda e: e.Edges, self.Patches)
+
+    def Meshes(self):
+        return map(lambda e: e.Mesh, self.Patches)
+
     def Render(self, *args, **kwargs):
         doc.Views.Redraw()
+
+    def AddPatch(self, cy, *args):
+        '''
+        Add `self.n ** 2`th Patch
+        '''
+        self.Patch = Patch(cy)
+        self.Patches.append(self.Patch)
+        self.PatchCount += 1
+
+        return self.Patch
+
+    def BuildPoint(self, cy, *args):
+        '''
+        Calculate point coordinates and return Rhino.Geometry.Point3d
+        '''
+        coords = map(
+            lambda i: (i * cy.Scale),
+            Calculate(cy.n, cy.Alpha, *args)  # args[1:]
+        )
+        x, y = cy.Offset
+        coords[0] = coords[0] + x
+        coords[1] = coords[1] + y
+
+        self.Point = Point3d(*coords)
+        self.Points.Add(self.Point)
+        self.Patch.Points.Add(self.Point)
+        self.PointCount += 1
+
+        return self.Point
+
+    def __listeners__(self):
+        return {
+            'k1.on': [],
+            'k1.in': [],
+            'k2.on': [self.AddPatch],
+            'k2.in': [],
+            'a.on': [],
+            'a.in': [],
+            'b.on': [self.BuildPoint],
+            'b.in': [],
+            'b.out': [],
+            'a.out': [],
+            'k2.out': [],
+            'k1.out': []
+        }
 
     def __rendered__(self, obj):
         '''
@@ -28,34 +132,37 @@ class Builder:
 
 
 class PointCloudBuilder(Builder):
+    __slots__ = Builder.__slots__
+
     def __init__(self, *args):
         Builder.__init__(self, *args)
 
     def Render(self, cy, *args):
-        for point in cy.Points:
+        for point in self.Points:
             self.__rendered__(doc.Objects.AddPoint(point))
 
 
 class MeshBuilder(Builder):
-    __slots__ = ['Mesh', 'SubMesh', 'Meshes']
+    __slots__ = Builder.__slots__ + ['Mesh']
 
     def __init__(self, cy):
         Builder.__init__(self, cy)
-        self.Mesh = None
+        self.Mesh = Mesh()
         self.MeshCount = 0
 
     def __listeners__(self):
-        return {
-            'k2.on': [self.AddMesh],
-            'b.on': [self.IncrementMeshCount],
-            'b.in': [self.BuildMesh],
-            'k2.out': [self.WeldMesh]
-        }
+        listeners = Builder.__listeners__(self)
+        listeners['k2.on'].append(self.AddMesh)
+        listeners['b.on'].append(self.IncrementMeshCount)
+        listeners['b.in'].append(self.BuildMesh)
+        listeners['k2.out'].append(self.WeldMesh)
+
+        return listeners
 
     def AddMesh(self, cy, *args):
-        # k1, k2, a = args
+        # k1, k2 = args
 
-        cy.Patch.Mesh = Mesh()
+        self.Patch.Mesh = Mesh()
 
     def IncrementMeshCount(self, cy, *args):
         k1, k2, a, b = args
@@ -71,253 +178,111 @@ class MeshBuilder(Builder):
                 self.Mesh = Mesh()
 
                 for i in [
-                    cy.PointCount,
-                    (cy.PointCount - 1),
-                    (cy.PointCount - self.MeshCount - 1),
-                    (cy.PointCount - self.MeshCount)
+                    self.PointCount,
+                    (self.PointCount - 1),
+                    (self.PointCount - self.MeshCount - 1),
+                    (self.PointCount - self.MeshCount)
                 ]:
-                    try:   # account for 0 index
-                        p = cy.Points[i - 1]
+                    try:  # account for 0 index
+                        p = self.Points[i - 1]
                         self.Mesh.Vertices.Add(p.X, p.Y, p.Z)
                     except IndexError:
-                        print 'Points[' + str(i) + '] out of range, ' + str(cy.PointCount)
+                        print 'Points[' + str(i) + '] out of range, ' + str(self.PointCount)
 
                 self.Mesh.Faces.AddFace(0, 1, 2, 3)
                 self.Mesh.Normals.ComputeNormals()
-                # self.Mesh.Compact()
-                cy.Patch.Append(self.Mesh)
+                self.Mesh.Compact()
+                self.Patch.Mesh.Append(self.Mesh)
 
     def WeldMesh(self, cy, *args):
-        cy.Patch.Mesh.Weld(pi)
+        self.Patch.Mesh.Weld(pi)
 
     def Render(self, cy, *args):
-        for mesh in cy.Meshes:
-            doc.Objects.AddMesh(mesh)
-            # self.__rendered__(doc.Objects.AddMesh(mesh))
+        for mesh in self.Meshes():
+            self.__rendered__(doc.Objects.AddMesh(mesh))
 
         doc.Views.Redraw()
 
 
 class CurveBuilder(Builder):
-    __slots__ = ['Edges', 'A', 'B', 'C', 'D']
+    __slots__ = Builder.__slots__ + [
+        'Edges',
+        'A', 'B', 'C', 'D',
+        'A1', 'B1', 'C1', 'D1',
+        'A2', 'B2', 'C2', 'D2'
+    ]
 
     def __init__(self, cy):
         Builder.__init__(self, cy)
-        self.Edges = None
-        self.A = None
-        self.B = None
-        self.C = None
-        self.D = None
+        self.VCount = 0
 
     def __listeners__(self):
-        return {
-            'k2.in': [self.AddEdges],
-            'b.in': [self.PlotEdges],
-            'k2.out': [self.BuildEdges, self.BuildEdgeSurface]
-        }
+        listeners = Builder.__listeners__(self)
+        listeners['k2.in'].append(self.AddEdges)
+        listeners['b.in'].append(self.PlotEdges)
+        listeners['k2.out'].extend([self.BuildEdges])
+
+        return listeners
 
     def AddEdges(self, cy, *args):
-        self.Edges = CurveList()
         self.A = []
         self.B = []
         self.C = []
         self.D = []
 
-    def BuildEdges(self, cy, *args):
-        for points in (self.A, self.B, self.C, self.D):
-            self.Edges.Add(self.BuildInterpolatedCurve(points))
+        self.A1 = []
+        self.B1 = []
+        self.C1 = []
+        self.D1 = []
 
-    def BuildEdgeSurface(self, cy, *args):
-        surface, err = NurbsSurface.CreateNetworkSurface(
-            self.Edges,  # IEnumerable<Curve> curves,
-            1,  # int continuity along edges, 0 = loose, 1 = pos, 2 = tan, 3 = curvature
-            0.0001,  # double edgeTolerance,
-            0.1,  # double interiorTolerance,
-            1.0  # double angleTolerance,
-        )
-
-        cy.Patch.Surfaces.append(surface)
+        self.A2 = []
+        self.B2 = []
+        self.C2 = []
+        self.D2 = []
 
     def PlotEdges(self, cy, *args):
+        '''
+        [#10](https://bitbucket.org/kunst_dev/snippets/issues/10/curve-generation)
+        '''
         k1, k2, a, b = args
 
-        '''
-        Use `Rhino.Command('ExtractEdges')`
-
-        Example 1
-        ```
-            u = self.U[-1]
-            # self.V[-1]
-
-            if a == cy.RngU[0]:
-                cy.Patch.C4.append(point)
-                # u.append(point)
-                # v.append(point)
-            elif a == cy.RngU[-1]:
-                cy.Patch.C3.append(point)
-                # u.append(point)
-                # v.append(point)
-            elif b == cy.RngV[0]:  # is this necessary?
-                cy.Patch.C1.append(point)
-            elif b == cy.RngV[-1]:
-                cy.Patch.C2.append(point)
-
-            # TODO do we need to be adding this to the front of the array arr.insert(0, val)
-            if a == cy.RngU[0] or a == cy.RngU[-1]:
-                u.append(point)
-                # v.append(point)
-                if b == cy.RngV[0]:
-                    cy.Patch.C1.append(point)
-                elif b == cy.RngV[-1]:
-                    cy.Patch.C2.append(point)
-        ```
-
-        Example 2
-        ```
-            cy.Patch.BPos += 1
-
-            if a == cy.RngU[0]:
-                cy.Patch.AddVCurve()
-
-            if b == cy.RngV[0]:
-                cy.Patch.AddCurve()
-                cy.Patch.BPos = 0
-
-            try:
-                cy.Patch.GetCurve(-1).append(cy.Point)
-            except AttributeError:
-                pass
-
-            try:
-                if b == cy.RngV[-1]:
-                    pass
-                else:
-                    # (cy.PatchCount * cy.Patch.BPos)
-                    cy.Patch.GetVCurve(-cy.Patch.BPos).append(cy.Point)
-            except AttributeError:
-                pass
-
-            # Collect all edge points
-            if a == cy.RngU[0] or a == cy.RngU[-1]:
-                cy.Patch.Edges.append(point)
-            if b == cy.RngV[0] or b == cy.RngV[-1]:
-                cy.Patch.Edges.append(cy.Point)
-
-            # Collect points for each edge
-            if a == cy.RngU[0]:
-                cy.Patch.C4.append(cy.Point)
-            elif a == cy.RngU[-1]:
-                cy.Patch.C3.append(cy.Point)
-
-            if a == cy.RngU[0] or a == cy.RngU[-1]:
-                if b == cy.RngV[0]:
-                    cy.Patch.C1.append(cy.Point)
-                if b == cy.RngV[-1]:
-                    cy.Patch.C2.append(cy.Point)
-            elif b == cy.RngV[0]:
-                cy.Patch.C1.append(cy.Point)
-            elif b == cy.RngV[-1]:
-                cy.Patch.C2.append(cy.Point)
-        ```
-
-        '''
-
         if a == cy.RngU[0]:
-            self.A.append(cy.Point)
+            self.A.append(self.Point)
+            self.A1.append(self.Point)
+        if a == cy.RngU[cy.CentreU]:
+            self.C1.append(self.Point)
+            self.C2.append(self.Point)
         if a == cy.RngU[-1]:
-            self.C.append(cy.Point)
+            self.C.append(self.Point)
+            self.A2.append(self.Point)
 
         if b == cy.RngV[0]:
-            self.B.append(cy.Point)
+            self.B.append(self.Point)
+            if len(self.B1) <= cy.CentreV:
+                self.B1.append(self.Point)
+            if len(self.B1) > cy.CentreV:
+                self.B2.append(self.Point)
         if b == cy.RngV[-1]:
-            self.D.append(cy.Point)
+            self.D.append(self.Point)
+            if len(self.D1) <= cy.CentreV:
+                self.D1.append(self.Point)
+            if len(self.D1) > cy.CentreV:
+                self.D2.append(self.Point)
 
-        '''
+    def BuildEdges(self, cy, *args):
+        # for points in (self.A, self.B, self.C, self.D):
+        #     self.Patch.Edges.Add(self.BuildInterpolatedCurve(points))
 
-        Example 4
-        ```
-            for a in RngU[0], RngU[len(RngU) / 2], RngU[-1]:
-                for b in RngV:
-                    point = Point(k1, k2, a, b)
-                    rs.AddPoint(point)
-            for a in RngU:
-                for b in RngV[0], RngV[len(RngV) / 2], RngV[-1]:
-                    point = Point(k1, k2, a, b)
-                    rs.AddPoint(point)
+        Edges1 = CurveList()
+        Edges2 = CurveList()
 
+        for points in (self.A1, self.B1, self.C1, self.D1):
+            Edges1.Add(self.BuildInterpolatedCurve(points))
 
-            Crvs1 = CurveList()
-            Crvs2 = CurveList()
-            CrvA1 = []
-            CrvA2 = []
-            CrvB1 = []
-            CrvB2 = []
-            CrvC1 = []
-            CrvC2 = []
-            CrvD1 = []
-            CrvD2 = []
+        for points in (self.A2, self.B2, self.C2, self.D2):
+            Edges2.Add(self.BuildInterpolatedCurve(points))
 
-            # CrvStart = []
-            # CrvMid = []
-            # CrvEnd = []
-
-            for a in RngU:
-                if a == RngU[0]:
-                    CrvA1 = CreateInterpolatedCurve(map(lambda b: Point(k1, k2, a, b), RngV))
-                if a == RngU[len(RngU) / 2]:
-                    CrvC1 = CreateInterpolatedCurve(map(lambda b: Point(k1, k2, a, b), RngV))
-                    CrvA2 = CrvC1
-                if a == RngU[-1]:
-                    CrvC2 = CreateInterpolatedCurve(map(lambda b: Point(k1, k2, a, b), RngV))
-
-                for b in RngV:
-                    if b == RngV[0]:
-                        if len(CrvB1) <= 5: # <= (len(RngV) / 2)
-                            CrvB1.append(Point(k1, k2, a, b))
-                        if len(CrvB1) >= 5: # <= (len(RngV) / 2)
-                            CrvB2.append(Point(k1, k2, a, b))
-                    # if b == RngV[len(RngV) / 2]:
-                    #     CrvMid.append(point)
-                    if b == RngV[-1]:
-                        if len(CrvD1) <= 5: # <= (len(RngV) / 2)
-                            CrvD1.append(Point(k1, k2, a, b))
-                        if len(CrvD1) >= 5: # <= (len(RngV) / 2)
-                            CrvD2.append(Point(k1, k2, a, b))
-
-            Crvs1.Add(CrvA1)
-            Crvs1.Add(CrvB1)
-            Crvs1.Add(CrvC1)
-            Crvs1.Add(CrvD1)
-
-            Crvs2.Add(CrvA2)
-            Crvs2.Add(CrvB2)
-            Crvs2.Add(CrvC2)
-            Crvs2.Add(CrvD2)
-
-            surf1, err = NurbsSurface.CreateNetworkSurface(
-                Crvs1,  # IEnumerable<Curve> curves,
-                0,  # int continuity along edges, 0 = loose, 1 = pos, 2 = tan, 3 = curvature
-                0.0001,  # double edgeTolerance,
-                0.1,  # double interiorTolerance,
-                1.0  # double angleTolerance,
-            )
-
-            surf2, err = NurbsSurface.CreateNetworkSurface(
-                Crvs2,  # IEnumerable<Curve> curves,
-                0,  # int continuity along edges, 0 = loose, 1 = pos, 2 = tan, 3 = curvature
-                0.0001,  # double edgeTolerance,
-                0.1,  # double interiorTolerance,
-                1.0  # double angleTolerance,
-            )
-
-            doc.Objects.AddSurface(surf1)
-            doc.Objects.AddSurface(surf2)
-
-            # for e in Crvs1:
-            #     e = doc.Objects.AddCurve(e)
-            #     rs.ObjectColor(e, 10)
-        ```
-        '''
+        self.Patch.Edges = [Edges1, Edges2]
 
     def BuildInterpolatedCurve(self, points):
         '''
@@ -346,13 +311,21 @@ class CurveBuilder(Builder):
         raise Exception('Unable to CreateInterpolatedCurve')
 
     def Render(self, cy, *args):
-        for subDivisions in cy.Surfaces():
-            for surface in subDivisions:
-                if surface:
-                    self.__rendered__(doc.Objects.AddSurface(surface))
+        for patch in self.Edges():
+            for edges in patch:
+                for edge in edges:
+                    self.__rendered__(doc.Objects.AddCurve(edge))
+
+                # surface, err = NurbsSurface.CreateNetworkSurface(
+                #     edges,  # IEnumerable<Curve> curves,
+                #     1,  # int continuity along edges, 0 = loose, 1 = pos, 2 = tan, 3 = curvature
+                #     0.1,  # double edgeTolerance,
+                #     0.1,  # double interiorTolerance,
+                #     1.0  # double angleTolerance,
+                # )
+                # self.__rendered__(doc.Objects.AddSurface(surface))
 
 
-# TODO Move Curve behaviour into CurveBuilder and inherit
 class SurfaceBuilder(Builder):
     '''
     TODO
@@ -369,106 +342,119 @@ class SurfaceBuilder(Builder):
         Rhino.AddNetworkSrf
     '''
 
-    __slots__ = ['U', 'V', 'UDegree', 'VDegree', 'Points', 'UCount', 'VCount']
+    __slots__ = Builder.__slots__ + ['UDegree', 'VDegree', '__points', 'UCount', 'VCount']
 
     def __init__(self, cy):
         Builder.__init__(self, cy)
         # Note: Polysurface created if U and V degrees differ.
         self.UDegree = 3
         self.VDegree = 3
-        self.Points = None
         self.UCount = 0
         self.VCount = 0
 
     def __listeners__(self):
-        return {
-            'k2.on': [self.AddSurface],
-            'a.on': [self.ResetV],
-            'a.in': [],
-            'b.in': [self.PlotSurface],  # self.PlotSurfaceEdges
-            'b.out': [self.IncrementV],
-            'a.out': [self.IncrementU, self.AddSurfaceSubdivision],
-            'k2.out': [self.BuildSurface, self.JoinSurfaces]  # self.BuildSurfaceEdges, self.BuildBrep
-        }
+        listeners = Builder.__listeners__(self)
+        listeners['k2.on'].append(self.AddSurface)
+        listeners['a.on'].append(self.ResetVCount)
+        listeners['b.in'].append(self.PlotSurface)  # self.PlotSurfaceEdges
+        listeners['b.out'].append(self.IncrementVCount)
+        listeners['a.out'].extend([self.IncrementUCount, self.AddSurfaceSubdivision])
+        listeners['k2.out'].extend([self.BuildSurface, self.JoinSurfaces])  # self.BuildSurfaceEdges, self.BuildBrep
+
+        return listeners
 
     def AddSurface(self, *args):
-        self.Points = Point3dList()
-        self.ResetU()
-        self.ResetV()
+        self.__points = Point3dList()
+        self.ResetUCount()
+        self.ResetVCount()
 
-    def ResetU(self, *args):
+    def ResetUCount(self, *args):
         self.UCount = 0
 
-    def ResetV(self, *args):
+    def ResetVCount(self, *args):
         self.VCount = 0
 
-    def IncrementV(self, *args):
+    def IncrementVCount(self, *args):
         self.VCount += 1
 
-    def IncrementU(self, *args):
+    def IncrementUCount(self, *args):
         self.UCount += 1
 
     def AddSurfaceSubdivision(self, cy, *args):
         k1, k2, a = args
 
-        if a == cy.RngU[int(cy.U / 2)]:
+        if a == cy.RngU[cy.CentreU]:
             self.BuildSurface(cy, *args)  # Finalise current surface subdivision
             self.AddSurface(cy, *args)  # Begin next subdivision
-            self.Points = Point3dList(cy.Points[-cy.U:])
-            # self.IncrementV()
-            self.IncrementU()
+            self.__points = Point3dList(self.Points[-cy.U:])
+            self.IncrementUCount()
 
     def PlotSurface(self, cy, *args):
         k1, k2, a, b = args
 
-        self.Points.Add(cy.Point)
+        self.__points.Add(self.Point)
 
     def BuildSurface(self, cy, *args):
+        '''
+        TODO Add `Weight` to central control point
+
+        ```
+            cp = surface.Points.GetControlPoint(0, cy.V / 2)
+            cp.Weight = 1000
+            for point in surface.Points:
+                if point.X == 0 or point.Y == 0:
+                    cp = ControlPoint(point.X, point.Y, point.Z, 1000)
+                    surface.Points.SetControlPoint(0, cy.V / 2, cp)
+        ```
+        '''
         surface = NurbsSurface.CreateFromPoints(
-            self.Points,
+            self.__points,
             self.UCount,
             self.VCount,
             self.UDegree,
             self.VDegree
         )
 
-        # TODO Weight central control point
-        # cp = surface.Points.GetControlPoint(0, cy.V / 2)
-        # cp.Weight = 1000
+        self.Patch.Surfaces.append(surface)
 
-        # for point in surface.Points:
-        #     if point.X == 0 or point.Y == 0:
-        #         cp = ControlPoint(point.X, point.Y, point.Z, 1000)
+    def BuildEdgeSurface(self, edges, *args):
+        surface, err = NurbsSurface.CreateNetworkSurface(
+            edges,  # IEnumerable<Curve> curves,
+            1,  # int continuity along edges, 0 = loose, 1 = pos, 2 = tan, 3 = curvature
+            0.001,  # double edgeTolerance,
+            0.001,  # double interiorTolerance,
+            0.001  # double angleTolerance,
+        )
 
-        # surface.Points.SetControlPoint(0, cy.V / 2, cp)
-
-        # # cy.Patch.Surface = surface
-        cy.Patch.Surfaces.append(surface)
+        self.Patch.Surfaces.append(surface)
 
     def JoinSurfaces(self, cy, *args):
         '''
         TODO
         '''
         return
-        # rs.JoinSurfaces(cy.Patch.Surfaces[-2:])
+        # rs.JoinSurfaces(self.Patch.Surfaces[-2:])
 
     def BuildBrep(self, cy, *args):
         '''
         "Quadratic" Boundary Representation (Brep) from curves
         '''
-        cy.Patch.Brep = Brep.CreateEdgeSurface(self.Patch.Edges)
+        self.Patch.Brep = Brep.CreateEdgeSurface(self.Patch.Edges)
 
     def Render(self, cy, *args):
-        for subDivisions in cy.Surfaces():
+        for subDivisions in self.Surfaces():
             for surface in subDivisions:
-                if surface: self.__rendered__(doc.Objects.AddSurface(surface))
+                if surface:
+                    self.__rendered__(doc.Objects.AddSurface(surface))
 
-        for curves in cy.Edges():
+        for curves in self.Edges():
             for curve in curves:
-                if curve: self.__rendered__(doc.Objects.AddCurve(curve))
+                if curve:
+                    self.__rendered__(doc.Objects.AddCurve(curve))
 
-        for brep in cy.Breps():
-            if brep: self.__rendered__(doc.Objects.AddBrep(brep))
+        for brep in self.Breps():
+            if brep:
+                self.__rendered__(doc.Objects.AddBrep(brep))
 
 
 __all__ = {

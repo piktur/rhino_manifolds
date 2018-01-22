@@ -5,44 +5,9 @@ from math import cos, sin, pi, fabs
 from scriptcontext import doc
 # from rhinoscriptsyntax import AddObjectsToGroup, AddGroup, frange
 import rhinoscriptsyntax as rs
-from Rhino.Geometry import Point3d
-from Rhino.Collections import Point3dList, CurveList
 
 from events import EventHandler
-from export import *
-from calc import Calculate
 import builder
-
-
-class Patch:
-    '''
-    Attributes:
-        Points : Rhino.Collections.Point3dList
-        Surface : Rhino.Geometry.NurbsSurface
-        Surface : list<Rhino.Geometry.NurbsSurface>
-        Brep : Rhino.Geometry.Brep
-        Mesh : Rhino.Geometry.Mesh
-        Edges : list<Rhino.Geometry.NurbsCurve>
-    '''
-    __slots__ = [
-        'CalabiYau', 'Points', 'Surface', 'Surfaces', 'Brep', 'Mesh', 'Edges',
-        'C1', 'C2', 'C3', 'C4',
-        '__built__'
-    ]
-
-    def __init__(self, cy):
-        self.CalabiYau = cy
-        self.Points = Point3dList()
-        self.Surface = None
-        self.Surfaces = []
-        self.Brep = None
-        self.Mesh = None
-        self.Edges = CurveList()
-        self.C1 = []
-        self.C2 = []
-        self.C3 = []
-        self.C4 = []
-        self.__built__ = False
 
 
 class Manifold:
@@ -77,19 +42,15 @@ class Manifold:
         RngK : range
         RngU : range
         RngV : range
-        Points : list<Rhino.Geometry.Point3d>
-        PointCount : int
-            Cumulative position within `Plot3D` nested loop -- equiv to `len(self.Points)`
-        Patches : list<Patch>
-        PatchCount : int
         Builder : class
     '''
 
     __slots__ = ['n', 'Alpha', 'Step', 'Scale',
-                 'Phases', 'MaxU', 'MaxV', 'StepV',
-                 'RngK', 'RngU', 'RngV',
-                 'Points', 'Point', 'PointCount',
-                 'Patches', 'Patch', 'PatchCount']
+
+                 'Phases',
+                 'MinU', 'MaxU', 'StepU', 'CentreU',
+                 'MinV', 'MaxV', 'StepV', 'CentreU',
+                 'RngK', 'RngU', 'RngV']
 
     def __init__(self, n=1, deg=1.0, step=0.1, scale=1, offset=(0, 0), type=4):
         '''
@@ -114,31 +75,33 @@ class Manifold:
 
         self.U = int(11)
         self.V = int(11)
+
         self.MinU = -1
         self.MaxU = 1
-        # NOTE `StepU` -- "xi" must be odd to guarantee passage through fixed points at (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0) [Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+        # NOTE `U` -- "xi" must be odd to guarantee passage through fixed points at
+        # (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0)
+        # [Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
         self.StepU = fabs(self.MaxU - self.MinU) / float(self.U - 1)
+
         self.MinV = 0
         self.MaxV = float(pi / 2)
         self.StepV = fabs(self.MaxV - self.MinV) / float(self.V - 1)
         # self.StepV = self.MaxV * self.Step
-        self.RngK = rs.frange(0, n - 1, 1) # range(self.n)
+
+        self.RngK = rs.frange(0, n - 1, 1)  # range(self.n)
         self.RngU = rs.frange(self.MinU, self.MaxU, self.StepU)
         self.RngV = rs.frange(self.MinV, self.MaxV, self.StepV)
 
+        self.CentreU = len(self.RngU) / 2
+        self.CentreV = len(self.RngV) / 2
+
         self.Phases = []
 
-        # NOTE [Figure 5](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) Demonstrates phase occurrence. Build algorithm to group accordingly.
+        # NOTE [Figure 5](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+        # Demonstrates phase occurrence. Build algorithm to group accordingly.
         for i, k1 in enumerate(self.RngK):
             for i, k2 in enumerate(self.RngK):
                 self.Phases.append([k1, k2])
-
-        self.Points = []
-        self.Point = None
-        self.PointCount = 0
-        self.Patches = []
-        self.Patch = None
-        self.PatchCount = 0
 
         if type == 5:
             # TODO
@@ -154,65 +117,6 @@ class Manifold:
         for loop in ['k1', 'k2', 'a', 'b']:
             for event in ['on', 'in', 'out']:
                 self.Events.__registry__['.'.join([loop, event])] = []
-
-    def Surfaces(self):
-        return map(lambda e: e.Surfaces, self.Patches)
-
-    def Breps(self):
-        return map(lambda e: e.Brep, self.Patches)
-
-    def Edges(self):
-        return map(lambda e: e.Edges, self.Patches)
-
-    def Meshes(self):
-        return map(lambda e: e.Mesh, self.Patches)
-
-    def Build(self):
-        '''
-        Build Rhino objects and add to document
-        '''
-        self.Events.register({
-            'k2.on': [self.AddPatch],
-            'b.on': [self.AddPoint],
-            'b.in': [],
-            'k2.out': []
-        })
-
-        builder = self.Builder(self)
-
-        # Register builder's listeners
-        if hasattr(self.Builder, '__listeners__') and callable(self.Builder.__listeners__):
-            self.Events.register(builder.__listeners__())
-
-        self.Plot3D()
-        builder.Render(self)
-
-    def AddPatch(self, *args):
-        '''
-        Add `self.n ** 2`th Patch
-        '''
-        self.Patch = Patch(self)
-        self.Patches.append(self.Patch)
-        self.PatchCount += 1
-        return self.Patch
-
-    def AddPoint(self, *args):
-        '''
-        Calculate point coordinates and return Rhino.Geometry.Point3d
-        '''
-        coords = map(
-            lambda i: (i * self.Scale),
-            Calculate(self.n, self.Alpha, *args[1:])
-        )
-        x, y = self.Offset
-        coords[0] = coords[0] + x
-        coords[1] = coords[1] + y
-
-        self.Point = Point3d(*coords)
-        self.Points.Add(self.Point)
-        self.Patch.Points.Add(self.Point)
-        self.PointCount += 1
-        return self.Point
 
     def Plot3D(self):
         '''
@@ -246,3 +150,16 @@ class Manifold:
             self.Events.publish('k1.out', self, k1)
 
         return self
+
+    def Build(self):
+        '''
+        Build Rhino objects and add to document
+        '''
+        builder = self.Builder(self)
+
+        # Register builder's listeners
+        if hasattr(self.Builder, '__listeners__') and callable(self.Builder.__listeners__):
+            self.Events.register(builder.__listeners__())
+
+        self.Plot3D()
+        builder.Render(self)
