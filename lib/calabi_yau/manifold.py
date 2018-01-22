@@ -69,7 +69,7 @@ class Manifold:
             Sample rate
         Scale : int
             [1..100]
-        Offset : int
+        Offset : tuple(int, int)
         Phases : list
         MaxU : float
         MaxV : float
@@ -91,7 +91,7 @@ class Manifold:
                  'Points', 'Point', 'PointCount',
                  'Patches', 'Patch', 'PatchCount']
 
-    def __init__(self, n=1, deg=1.0, step=0.1, scale=1, offset=0, type=4):
+    def __init__(self, n=1, deg=1.0, step=0.1, scale=1, offset=(0, 0), type=4):
         '''
         Parameters:
             type : int
@@ -110,7 +110,7 @@ class Manifold:
         self.Alpha = deg * t
         self.Step = step
         self.Scale = scale
-        self.Offset = float(offset)
+        self.Offset = offset
 
         self.U = int(11)
         self.V = int(11)
@@ -201,9 +201,13 @@ class Manifold:
         Calculate point coordinates and return Rhino.Geometry.Point3d
         '''
         coords = map(
-            lambda i: (i * self.Scale) + self.Offset,
+            lambda i: (i * self.Scale),
             Calculate(self.n, self.Alpha, *args[1:])
         )
+        x, y = self.Offset
+        coords[0] = coords[0] + x
+        coords[1] = coords[1] + y
+
         self.Point = Point3d(*coords)
         self.Points.Add(self.Point)
         self.Patch.Points.Add(self.Point)
