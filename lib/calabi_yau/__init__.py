@@ -71,7 +71,7 @@ def Batch(dir, density=0.1, scale=100, type=4):
     offset = scale * 3
     alpha = rs.frange(0.1, 1.0, 0.1)
 
-    for n in rs.frange(2, 10, 1):
+    for n in rs.frange(2, 6, 1):
         for a in alpha:
             out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', str(int(a * 10)))
             queue[out] = manifold.Manifold(int(n), a, density, scale, (0, 0), type)

@@ -14,6 +14,7 @@ rs.EnableRedraw(True)
 
 if __name__ == '__main__':
     dir = rs.GetString('Destination')
-    Export(CalabiYau.Batch(dir), dir)
+    Export(CalabiYau.Batch(dir), CalabiYau.Make2D, dir)
+
     # CalabiYau.Run()
     # CalabiYau.Make2D()

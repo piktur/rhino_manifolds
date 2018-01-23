@@ -6,39 +6,24 @@ from Rhino.Geometry import Vector3d, Plane, Point3d, Brep
 
 
 layers = [
-    'Srf',
-    'Intersections',    # Perform before `Join`. `Intersection` Curves
-    'PolySrf',          # `Join` Patches
-    'Border::All',      # `Join` + `DupBorder`
-    'Border::Outer',    # Perform before `Join`. `SelAll` Patches + `DupBorder`
-    'Edges',            # Perform before `Join`. `SelAll` Patches + `DupBorder`
-    'Silhouette',       # `Join` + `Silhouette`. Weird artifacts across surface
-    'Wireframe',        # Set `SurfaceIsocurveDensity` then `Join` + `ExtractWireframe`.
-    'RenderMesh',       # Set `SurfaceIsocurveDensity` then `Join` + `ExtractRenderMesh`.
-    '2D'                # Project to 2D plane
+    'PolySrf',              # `Join` Patches
+    'Intersect::Curves',    # Perform before `Join`. `Intersection` Curves
+    'Intersect::Points',
+    'Border::All',          # `Join` + `DupBorder`
+    'Border::Outer',        # Perform before `Join`. `SelAll` Patches + `DupBorder`
+    'Silhouette',           # `Join` + `Silhouette`. Weird artifacts across surface
+    'Wireframe',            # Set `SurfaceIsocurveDensity` then `Join` + `ExtractWireframe`.
+    'RenderMesh',           # Set `SurfaceIsocurveDensity` then `Join` + `ExtractRenderMesh`.
+    '2D'                    # Project to 2D plane
 ]
 
 
 def Build():
-    # doc.Views.ActiveView.ActiveViewport
-    # rhino_object = rhutil.coercerhinoobject(surface_id, True, True)
-    # layerNames = rs.LayerNames()
-
-    # for object in selected:
-    #     object.Attributes.LayerIndex = layer
-    #     object.CommitChanges()
-
-    # doc.Objects.ModifyAttributes(id, )
-    # print obj.Attributes
-
-    # rs.EnableRedraw(False)
-    print doc.Linetypes
-
     Layers()
     Patches()
     Intersect()
     Border()
-    Silhouette()
+    # Silhouette()
     Wireframe()
 
     rs.EnableRedraw(True)
@@ -48,7 +33,6 @@ def Build():
 def Layers():
     for layer in layers:
         if not rs.IsLayer(layer):
-            # layer = doc.Layers.Add(e, System.Drawing.Color.Black)
             layer = rs.AddLayer(layer, System.Drawing.Color.Black)
             rs.LayerVisible(layer, False)
 
@@ -64,83 +48,74 @@ def Patches():
 
 
 def Intersect():
-    # rs.Command('SelSrf')
+    rs.CurrentLayer('Default')
     rs.ObjectsByType(rs.filter.surface, True)
     rs.Command('_Intersect')
-    # Intersections = rs.LastCreatedObjects(True)
-    for id in rs.ObjectsByType(rs.filter.curve, True):
-        rs.ObjectLayer(id, 'Intersections')
+
+    for id in rs.ObjectsByType(rs.filter.point):
+        rs.ObjectLayer(id, 'Intersect::Points')
+
+    for id in rs.ObjectsByType(rs.filter.curve):
+        rs.ObjectLayer(id, 'Intersect::Curves')
+
+    rs.LayerLocked('Intersect::Points', True)
+    rs.LayerLocked('Intersect::Curves', True)
+    rs.LayerLocked('Intersect', True)
 
 
 def Border():
-    PolySrf = doc.Objects.FindByLayer('PolySrf')[0].Id.ToString()
+    rs.CurrentLayer('Default')
+    for Srf in rs.ObjectsByType(rs.filter.surface, True):
+        for id in rs.DuplicateSurfaceBorder(Srf, 1):
+            rs.ObjectLayer(id, 'Border::All')
 
-    # rs.Command('DupBorder')
-    # Border = rs.LastCreatedObjects(True)
-    Edges = rs.DuplicateEdgeCurves(PolySrf, True)
-    Border = rs.DuplicateSurfaceBorder(PolySrf, 2)
+    rs.CurrentLayer('PolySrf')
+    for PolySrf in rs.ObjectsByType(rs.filter.polysurface, True):
+        for id in rs.DuplicateSurfaceBorder(PolySrf, 1):
+            rs.ObjectLayer(id, 'Border::Outer')
 
-    for id in Edges:
-        rs.ObjectLayer(id, 'Border::All')
-
-    for id in Border:
-        rs.ObjectLayer(id, 'Border::Outer')
+    rs.LayerLocked('Border::All', True)
+    rs.LayerLocked('Border::Outer', True)
+    rs.LayerLocked('Border', True)
 
 
 def Silhouette():
-    return
-    # doc.Objects.FindByLayer('PolySrf')
-    # rs.Command('Silhouette')
-    # Silhouette = rs.LastCreatedObjects(True)
-    # rs.ObjectLayer(Silhouette, 'Silhouette')
+    rs.CurrentLayer('PolySrf')
+    rs.Command('_Silhouette')
+    for id in rs.ObjectsByType(rs.filter.curve, True):
+        rs.ObjectLayer(id, 'Silhouette')
+    rs.LayerLocked('Silhouette', True)
 
 
-# See Patch topology example https://bitbucket.org/snippets/kunst_dev/Kyzqyp
-#
-#     for id in surfaces:
-#         U, V = rs.SurfaceKnotCount(id)
-#         point = # Some point on the surface
-#         rs.ExtractIsoCurve(id, point, 0 = U, 1 = V, 2 = Both):
 def Wireframe():
-    for i in range(-1, 10, 1):
-        PolySrf = doc.Objects.FindByLayer('PolySrf')[0].Id.ToString()
-        # rs.SurfaceIsocurveDensity(PolySrf, i)
-        rhino_object = rs.coercerhinoobject(PolySrf, True, True)
-        print rhino_object
-        # if not isinstance(rhino_object, Rhino.DocObjects.BrepObject):
-        #     return scriptcontext.errorhandler()
-        rc = rhino_object.Attributes.WireDensity
-        rhino_object.Attributes.WireDensity = i
-        rhino_object.CommitChanges()
-        doc.Views.Redraw()
+    for i in range(1, 5, 1):
+        rs.CurrentLayer('PolySrf')
 
         layer = 'Wireframe::' + str(i)
         if not rs.IsLayer(layer):
-            layer = rs.AddLayer(layer, System.Drawing.Color.Black)
+            rs.AddLayer(layer, System.Drawing.Color.Black)
         rs.LayerVisible(layer, False)
-        rs.CurrentLayer(layer)
 
-        # doc.Objects.FindByLayer('PolySrf', True)
+        for PolySrf in doc.Objects.FindByLayer('PolySrf'):
+            obj = rs.coercerhinoobject(PolySrf, True, True)
+            obj.Attributes.WireDensity = i
+            obj.CommitChanges()
+
+        rs.CurrentLayer('PolySrf')
+
         rs.ObjectsByType(rs.filter.polysurface, True)
-
-        # + PolySrf
-        rs.Command('_SelPolySrf')
-
         rs.Command(
-            '_ExtractWireframe '
-            + PolySrf
-            + ' OutputLayer=Current'
-            + ' GroupOutput=No'
+            '_ExtractWireframe'
+            + ' OutputLayer=Input'
+            + ' GroupOutput=Yes'
+            + ' _Enter'
         )
-        rs.Command('_SelPolySrf')
-        rs.Command('_Enter')
 
-        Wireframe = rs.LastCreatedObjects(True)
-        for id in Wireframe:
+        for id in rs.LastCreatedObjects(True):
             rs.ObjectLayer(id, layer)
 
-    rs.CurrentLayer('Default')
-    # rs.SurfaceIsocurveDensity(PolySrf, 0)
+        rs.LayerLocked(layer, True)
+    rs.LayerLocked('Wireframe', True)
 
 
 def Make2D():
@@ -153,12 +128,12 @@ def Make2D():
     From `Perspective` position camera and ensure only:
         * PolySrf
         * Wireframe
-        * Intersections
+        * Intersect
     Or:
         * PolySrf
         * Border
         * Edges
-        * Intersections
+        * Intersect
     Layers are visible
 
 

@@ -1,7 +1,6 @@
 import cmath
 from math import cos, sin, pi
 
-
 # n = 3
 # E = cmath.e
 # I = cmath.sqrt(-1)
