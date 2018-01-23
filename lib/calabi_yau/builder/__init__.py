@@ -28,6 +28,8 @@ class Patch:
         self.CalabiYau = cy
         self.Points = Point3dList()
         self.Surfaces = []
+        # self.Edges = []
+        # self.Brep = None
         self.__built__ = False
 
 
@@ -270,19 +272,21 @@ class CurveBuilder(Builder):
                 self.D2.append(self.Point)
 
     def BuildEdges(self, cy, *args):
-        # for points in (self.A, self.B, self.C, self.D):
-        #     self.Patch.Edges.Add(self.BuildInterpolatedCurve(points))
-
+        Edges = CurveList()
         Edges1 = CurveList()
         Edges2 = CurveList()
 
+        for points in (self.A, self.B, self.C, self.D):
+            Edges.Add(self.BuildInterpolatedCurve(points))
+
+        # Sub-dvisions
         for points in (self.A1, self.B1, self.C1, self.D1):
             Edges1.Add(self.BuildInterpolatedCurve(points))
 
         for points in (self.A2, self.B2, self.C2, self.D2):
             Edges2.Add(self.BuildInterpolatedCurve(points))
 
-        self.Patch.Edges = [Edges1, Edges2]
+        self.Patch.Edges = [Edges, Edges1, Edges2]
 
     def BuildInterpolatedCurve(self, points):
         '''
@@ -312,16 +316,23 @@ class CurveBuilder(Builder):
 
     def Render(self, cy, *args):
         for patch in self.Edges():
-            for edges in patch:
-                for edge in edges:
-                    self.__rendered__(doc.Objects.AddCurve(edge))
+            Edges, Edges1, Edges2 = patch
 
+            for edgeGroup in Edges1, Edges2:
+                for curve in edgeGroup:
+                    self.__rendered__(doc.Objects.AddCurve(curve))
+
+                # Create Boundary Representation
+                # self.Patch.Brep = Brep.CreateEdgeSurface(edgeGroup)
+                # self.__rendered__(doc.Objects.AddBrep(self.Patch.Brep))
+
+                # Create Nurbs Surface
                 # surface, err = NurbsSurface.CreateNetworkSurface(
-                #     edges,  # IEnumerable<Curve> curves,
-                #     1,  # int continuity along edges, 0 = loose, 1 = pos, 2 = tan, 3 = curvature
-                #     0.1,  # double edgeTolerance,
-                #     0.1,  # double interiorTolerance,
-                #     1.0  # double angleTolerance,
+                #     edgeGroup,
+                #     1,
+                #     0.1,
+                #     0.1,
+                #     1.0
                 # )
                 # self.__rendered__(doc.Objects.AddSurface(surface))
 
@@ -341,7 +352,6 @@ class SurfaceBuilder(Builder):
         NetworkSrf
         Rhino.AddNetworkSrf
     '''
-
     __slots__ = Builder.__slots__ + ['UDegree', 'VDegree', '__points', 'UCount', 'VCount']
 
     def __init__(self, cy):
@@ -356,10 +366,10 @@ class SurfaceBuilder(Builder):
         listeners = Builder.__listeners__(self)
         listeners['k2.on'].append(self.AddSurface)
         listeners['a.on'].append(self.ResetVCount)
-        listeners['b.in'].append(self.PlotSurface)  # self.PlotSurfaceEdges
+        listeners['b.in'].append(self.PlotSurface)
         listeners['b.out'].append(self.IncrementVCount)
         listeners['a.out'].extend([self.IncrementUCount, self.AddSurfaceSubdivision])
-        listeners['k2.out'].extend([self.BuildSurface, self.JoinSurfaces])  # self.BuildSurfaceEdges, self.BuildBrep
+        listeners['k2.out'].extend([self.BuildSurface, self.JoinSurfaces])  # self.BuildEdgeSurface
 
         return listeners
 
@@ -430,31 +440,16 @@ class SurfaceBuilder(Builder):
 
     def JoinSurfaces(self, cy, *args):
         '''
-        TODO
+        TODO Join Patch subdivisions
         '''
         return
         # rs.JoinSurfaces(self.Patch.Surfaces[-2:])
-
-    def BuildBrep(self, cy, *args):
-        '''
-        "Quadratic" Boundary Representation (Brep) from curves
-        '''
-        self.Patch.Brep = Brep.CreateEdgeSurface(self.Patch.Edges)
 
     def Render(self, cy, *args):
         for subDivisions in self.Surfaces():
             for surface in subDivisions:
                 if surface:
                     self.__rendered__(doc.Objects.AddSurface(surface))
-
-        for curves in self.Edges():
-            for curve in curves:
-                if curve:
-                    self.__rendered__(doc.Objects.AddCurve(curve))
-
-        for brep in self.Breps():
-            if brep:
-                self.__rendered__(doc.Objects.AddBrep(brep))
 
 
 __all__ = {

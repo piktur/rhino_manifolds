@@ -32,7 +32,7 @@ def GetUserInput():
     Scale = rs.GetInteger('Scale', 100, 1, 100)
     Offset = rs.GetInteger('Offset', 0, 0, 300)
     Offset = (Offset, Offset)
-    Builder = rs.GetInteger('Type', 3, 1, 5)
+    Builder = rs.GetInteger('Type', 4, 1, 5)
 
     return n, Alpha, Density, Scale, Offset, Builder
 

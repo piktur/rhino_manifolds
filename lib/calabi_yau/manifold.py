@@ -44,7 +44,6 @@ class Manifold:
         RngV : range
         Builder : class
     '''
-
     __slots__ = ['n', 'Alpha', 'Step', 'Scale',
 
                  'Phases',
@@ -133,8 +132,6 @@ class Manifold:
                 self.Events.publish('k2.in', self, k1, k2)
 
                 for a in self.RngU:
-                    # if a == self.RngU[0] and k2 == self.RngK[0] and k1 == self.RngK[0]
-
                     self.Events.publish('a.on', self, k1, k2, a)
                     self.Events.publish('a.in', self, k1, k2, a)
 
@@ -157,7 +154,6 @@ class Manifold:
         '''
         builder = self.Builder(self)
 
-        # Register builder's listeners
         if hasattr(self.Builder, '__listeners__') and callable(self.Builder.__listeners__):
             self.Events.register(builder.__listeners__())
 
