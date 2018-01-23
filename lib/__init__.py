@@ -1,15 +1,19 @@
 import rhinoscriptsyntax as rs
+from scriptcontext import doc
+
 import events
-import export
+from export import Export
 import utility
 import calabi_yau as CalabiYau
 
-from scriptcontext import doc
 
 reload(CalabiYau)
 
 rs.EnableRedraw(True)
 
+
 if __name__ == '__main__':
-    CalabiYau.Run()
-    doc.Views.Redraw()
+    dir = rs.GetString('Destination')
+    Export(CalabiYau.Batch(dir), dir)
+    # CalabiYau.Run()
+    # CalabiYau.Make2D()

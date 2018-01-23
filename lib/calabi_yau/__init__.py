@@ -8,13 +8,14 @@ Replaces Grasshopper workflow -- execute via `RunPythonScript`
 
 TOOD Assign elements to separate layers
 '''
-
+import os
 from scriptcontext import doc
 # from rhinoscriptsyntax import GetBoolean, GetInteger, GetReal
 import rhinoscriptsyntax as rs
 import utility
 import builder
 import export
+from export import fname
 import manifold
 import layers
 
@@ -65,7 +66,26 @@ def GenerateGrid(density=0.1, scale=100, type=4):
         doc.Views.Redraw()
 
 
-def Run():
-    args = GetUserInput()
+def Batch(dir, density=0.1, scale=100, type=4):
+    queue = {}
+    offset = scale * 3
+    alpha = rs.frange(0.1, 1.0, 0.1)
+
+    for n in rs.frange(2, 10, 1):
+        for a in alpha:
+            out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', str(int(a * 10)))
+            queue[out] = manifold.Manifold(int(n), a, density, scale, (0, 0), type)
+
+    return queue
+
+
+def Run(*args):
+    if rs.ContextIsRhino:  # rs.ContextIsGrasshopper
+        args = GetUserInput()
+
     manifold.Manifold(*args).Build()
-    # layers.Build()
+    doc.Views.Redraw()
+
+
+def Make2D():
+    layers.Build()

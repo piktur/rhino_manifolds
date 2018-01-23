@@ -4,85 +4,22 @@ from scriptcontext import doc
 import rhinoscriptsyntax as rs
 from Rhino.Geometry import Vector3d, Plane, Point3d, Brep
 
-# Layers
-# - `DupBorder` from Srf
-# - `Intersection`
-# - `DupBorder` from PolySrf
-# - `Sillhouette` from PolySrf
-# - `Extract Wiremesh` from PolySrf
-# - `Extract Isocurves`
-#
-# - From `Perspective` position camera and  Select
-#     PolySrf
-#     Wireframe
-#     Intersections
-#
-# Or
-#     PolySrf
-#     Border
-#     Edges
-#     Intersections
-#
-# - [`Make2D`](http://docs.mcneel.com/rhino/5/help/en-us/commands/make2d.htm) select "Current View" and select relevant layers lines etc to display. NOTE When using Make2d create a new layer for 2D and assign 2D Objects to it.
-# Otherwise display will be linked to the source layer.
-#
-# Swith to Top View
-# Hide all layers but 2D
-# `SelCrv`
-# `File > Export Selected`.
-# Use *.ai. Experiment with scale.
-# Use CMYK Save.
 
 layers = [
     'Srf',
-    'Edges',  #
-    'Intersections',  # Demarcate intersesctions
-    'PolySrf',  # Copy patches to new layer and Join
-    'Border::All',
-    'Border::Outer',
-    'Silhouette',  # Weird artifacts across surface
-    'Wireframe',   # Tweak Isocurve count
-    '2D'  # Project to 2D plane
+    'Intersections',    # Perform before `Join`. `Intersection` Curves
+    'PolySrf',          # `Join` Patches
+    'Border::All',      # `Join` + `DupBorder`
+    'Border::Outer',    # Perform before `Join`. `SelAll` Patches + `DupBorder`
+    'Edges',            # Perform before `Join`. `SelAll` Patches + `DupBorder`
+    'Silhouette',       # `Join` + `Silhouette`. Weird artifacts across surface
+    'Wireframe',        # Set `SurfaceIsocurveDensity` then `Join` + `ExtractWireframe`.
+    'RenderMesh',       # Set `SurfaceIsocurveDensity` then `Join` + `ExtractRenderMesh`.
+    '2D'                # Project to 2D plane
 ]
 
-# Data
-# Attributes
-# Render Meshes
-# Grips
-# Analysis models
-# **wireframe curves
-# selection flags
-# state flags
-# history
-#
-# Attributes
-# **UUID
-# NAme
-# **Layer
-# **Group list
-# Url
-# **Material source and index
-# **Rendering attributes
-# **colour source and value
-# **isocurve density
-# **linetype source & style
-# **display mode
-# arrowhead
-# plotcolor source and value
-# plotweight sourcce and value
-#
-# Object Geometry
-# Geometry
-# BoundingBox
-# Sub objects
-# **Type
-
-# TODO
-# - Set Linetype rs.ObjectLinetype()
-# - Set Layer Linetype
 
 def Build():
-    # doc.Views
     # doc.Views.ActiveView.ActiveViewport
     # rhino_object = rhutil.coercerhinoobject(surface_id, True, True)
     # layerNames = rs.LayerNames()
@@ -122,7 +59,7 @@ def Patches():
     # Patches = rs.ObjectsByType(rs.filter.surface | rs.filter.polysurface, True)
     Patches = doc.Objects.FindByLayer('Default')
     PatchesIds = rs.CopyObjects(Patches)
-    PolySrf = rs.JoinSurfaces(PatchesIds) # rs.Command('Join')
+    PolySrf = rs.JoinSurfaces(PatchesIds)  # rs.Command('Join')
     rs.ObjectLayer(PolySrf, 'PolySrf')
 
 
@@ -207,32 +144,56 @@ def Wireframe():
 
 
 def Make2D():
-    return
-    # https://github.com/localcode/rhinopythonscripts/blob/master/Make2D.py
-    #
-    # Drawing layout
-    # Current Vie
-    #
-    # Options
-    # Show tangent edges
-    # show hidden lines
-    # show viewport rectangle
-    # maintain sourc layers
-    #
-    # layers for Make2D objects
-    # visible lines
-    # visible tangents
-    # visible clipping plane
-    # hidden lines
-    # hidden tangents
-    # hidden clipping planes
-    # annotations
-    #
-    # sticky['l'] = 1
-    #
-    # '::'.join(['2D', sticky['l'] += 1, ])
+    '''
+    [See](https://github.com/localcode/rhinopythonscripts/blob/master/Make2D.py)
+    [`Make2D`](http://docs.mcneel.com/rhino/5/help/en-us/commands/make2d.htm)
 
-    # Set Perspective to parralellself.
+    `rs.Command('Make2D')` produces popup. Possible to interact with combobox programatically
+
+    From `Perspective` position camera and ensure only:
+        * PolySrf
+        * Wireframe
+        * Intersections
+    Or:
+        * PolySrf
+        * Border
+        * Edges
+        * Intersections
+    Layers are visible
+
+
+    `Make2D` options:
+        Drawing layout
+            * Current View
+
+        Options
+            * Show tangent edges
+            * show hidden lines
+            * show viewport rectangle
+            * maintain sourc layers
+
+        layers for Make2D objects
+            * visible lines
+            * visible tangents
+            * visible clipping plane
+            * hidden lines
+            * hidden tangents
+            * hidden clipping planes
+            * annotations
+
+    Export:
+        * Swith to Top View
+        * Hide all layers but 2D::visible
+        * `SelCrv`
+        * `File > Export Selected`.
+        * Use *.ai. Experiment with scale.
+
+    '''
+    return
+
+    # sticky['layerCount'] = 1
+    # '::'.join(['2D', sticky['layerCount'] += 1, ])
+
     # rs.Command(
     #     "Make2D DrawingLayout=CurrentView " +
     #     "ShowTangentEdges=Yes " +
@@ -241,53 +202,12 @@ def Make2D():
     #     "-Invert Hide SetView World Top ZE SelNone",
     #     False
     # )
-    #
+
     # switchLayers("viewportFramework - Hidden", "viewportFramework - Visible")
-    #
+
     # zoomToLayer("viewportFramework - Visible")
     #
-    #
+
     # app.RunScript("SelAll -Export "+export
     #         +" PreserveUnits=No "
     #         +"ViewportBoundary=Yes Enter", False)
-
-    # Produces popup can we work with this programatically
-    # rs.Command('Make2D')
-
-    # rs.Command('Make2D')
-
-# https://github.com/localcode/rhinopythonscripts/blob/master/FileTools.py
-
-# def exportFile(filePath,
-#         version=4,
-#         geomOnly=False,
-#         selectedOnly=False,
-#         ):
-#     '''Export a file.'''
-#     opt = FileWriteOptions()
-#     opt.FileVersion = version
-#     opt.WriteGeometryOnly = geomOnly
-#     opt.WriteSelectedObjectsOnly = selectedOnly
-#     return scriptcontext.doc.WriteFile(filePath, opt)
-
-
-# def exportLayers(layerNames, filePath, version=4):
-#     '''Export only the items on designated layers to a file.'''
-#     # save selection
-#     oldSelection = rs.SelectedObjects()
-#     # clear selection
-#     rs.UnselectAllObjects()
-#     # add everything on the layers to selection
-#     for name in layerNames:
-#         objs = scriptcontext.doc.Objects.FindByLayer(name)
-#         guids = [obj.Id for obj in objs]
-#         scriptcontext.doc.Objects.Select.Overloads[SCG.IEnumerable[System.Guid]](guids)
-#     # export selected items
-#     exportFile(filePath, version, selectedOnly=True)
-#     #clear selection
-#     rs.UnselectAllObjects()
-#     # restore selection
-#     if oldSelection:
-#            scriptcontext.doc.Objects.
-#            Select.Overloads[SCG.IEnumerable[System.Guid]](oldSelection)
-#     #print 'exported %s' % filePath
