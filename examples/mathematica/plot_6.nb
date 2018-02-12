@@ -1,0 +1,82 @@
+(* Translation of [Hanson](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) *)
+
+cCos[theta_,xi_] := .5(E^(xi + I theta) + E^(- xi - I theta))
+cSin[theta_,xi_] := (-.5 I)(E^(xi + I theta) - E^(- xi - I theta))
+z1[theta_,xi_,n_,k_] := E^(k*2*Pi*I/n)*cCos[theta,xi]^(2.0/n)
+z2[theta_,xi_,n_,k_] := E^(k*2*Pi*I/n)*cSin[theta,xi]^(2.0/n)
+pz1[theta_,xi_,n_,k_] := E^(( xi + I theta)/n)*E^( k*2*Pi*I/n)
+pz2[theta_,xi_,n_,k_] := E^((- xi - I theta)/n)*E^(-k*2*Pi*I/n)
+
+{
+  z1Val = N[z1[theta,xi,n1,k1]],
+  z2Val = N[z2[theta,xi,n2,k2]]
+},
+{
+  Re[z1Val],
+  Re[z2Val],
+  cosA*Im[z1Val] + sinA*Im[z2Val]
+}
+{ xi, -xiMax, xiMax, (2 * xiMax) / (xiSteps - 1) },
+{ theta, 0, Pi/2, (Pi/2) / (thetaSteps - 1) }
+
+(* Render: *)
+bs0 = 0.8;
+bs1 = 0.2;
+lt = 0.9;
+
+surface33 = Show[
+  Graphics3D[
+    Table[
+      [
+        Block[
+          {
+            bs = If[
+                And[k1==0 , k2==0],
+                bs0,
+                bs1
+            ]
+          },
+          {
+            RGBColor[bs+lt*k1/(n1-1), bs+lt*k2/(n2-1), bs],
+            patch33[k1+1, k2+1]
+          }
+        ]
+        {k1, 0, n1-1},
+        {k2, 0, n2-1}
+      ],
+      Lighting->False, Axes->None, Boxed -> False, BoxRatios->{1,1,1},
+      ViewPoint->{2.9, 1.0, 1.4}
+    ]
+  ]
+]
+
+(*
+  bs0 = 0.8;
+  bs1 = 0.2;
+  lt = 0.9;
+
+  n1 = 5;
+  n2 = 5;
+
+  k1 = 5;
+  k2 = 0;
+  bs = bs1;
+
+  sx = 255 / n1;
+
+  r = bs+(lt*k1 * sx)
+  g = bs+(lt*k2 * sx)
+  b = bs * sx
+
+  RGBColor[bs+(lt*k1/(n1-1)), bs+(lt*k2/(n2-1)), bs]
+
+  bs+(lt * Rescale[k2, {0,n2-1}])
+
+  Rescale[x, {0, 255}]
+
+  RGBColor[
+    If[k1 == 0 && k2 == 0, 0, Rescale[r, {0, 255}]],
+    If[k1 == 0 && k2 == 0, 0, Rescale[g, {0, 255}]],
+    If[k1 == 0 && k2 == 0, 1, Rescale[b, {0, 255}]]
+  ]
+*)

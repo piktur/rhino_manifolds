@@ -1,0 +1,42 @@
+(*https://mathematica.stackexchange.com/questions/61590/problem-with-old-code-for-a-calabi-yau-manifold*)
+
+z1[θ_, ξ_, n_, k_] := Exp[2 π I k/n] Cosh[ξ + I θ]^(2/n);
+z2[θ_, ξ_, n_, k_] := Exp[2 π I k/n] Sinh[ξ + I θ]^(2/n);
+
+With[
+  {n1 = 3, n2 = 3, φ = π/4, bs0 = 0.8, bs1 = 0.2, lt = 0.9},
+  ParametricPlot3D[
+    Flatten[
+      Table[
+        With[
+          {z1Val = z1[θ, ξ, n1, k1], z2Val = z2[θ, ξ, n2, k2]},
+          {
+            Re[z1Val],
+            Re[z2Val],
+            Cos[φ] Im[z1Val] + Sin[φ] Im[z2Val]
+          }
+        ],
+        {k1, 0, n1 - 1},
+        {k2, 0, n2 - 1}
+      ],
+      1
+    ],
+    {ξ, -1, 1},
+    {θ, 0, π/2},
+    Axes -> None,
+    Boxed -> False,
+    Evaluated -> True,
+    Lighting -> "Neutral",
+    PlotStyle -> Flatten[
+      Table[
+        With[
+          {b = bs1 + (bs0 - bs1) Boole[k1 == k2 == 0]},
+          RGBColor[b + lt k1/(n1 - 1), b + lt k2/(n2 - 1), b]
+        ],
+        {k1, 0, n1 - 1},
+        {k2, 0, n2 - 1}
+      ]
+    ],
+    ViewPoint -> {2.9, 1.0, 1.4}
+  ]
+]

@@ -1,0 +1,38 @@
+(*https://nylander.wordpress.com/2008/08/25/cross-section-of-the-quintic-calabi-yau-manifold/*)
+n = 5
+CalabiYau[z_, k1_, k2_] := Module[
+  {
+    z1 = Exp[2Pi I k1/n]Cosh[z]^(2/n),
+    z2 = Exp[2Pi I k2/n]Sinh[z]^(2/n)
+  },
+  {
+    Re[z1],
+    Re[z2],
+    Cos[alpha]Im[z1] + Sin[alpha]Im[z2]
+  }
+]
+
+Do[
+  alpha = (0.25 + t)Pi;
+  Show[
+    Graphics3D[
+      Table[
+        ParametricPlot3D[
+          CalabiYau[x + I y, k1, k2],
+          {x, -1, 1},
+          {y, 0, Pi/2},
+          DisplayFunction -> Identity,
+          Compiled ->False
+        ]
+        [
+          [1]
+        ],
+        {k1, 0, n - 1},
+        {k2, 0, n - 1}
+      ],
+      PlotRange -> 1.5{{-1, 1}, {-1, 1}, {-1, 1}},
+      ViewPoint -> {1, 1, 0}
+    ]
+  ],
+  {t, 0, 1, 0.1}
+];

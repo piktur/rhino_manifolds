@@ -1,0 +1,21 @@
+n = 3;
+
+u1[a_, b_] := .5 (E ^ (a + I * b) + E ^ (-a - I * b));
+u2[a_, b_] := .5 (E ^ (a + I * b) - E ^ (-a - I * b));
+
+z1k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u1[a, b] ^ (2.0 / n);
+z2k[a_, b_, n_, k_] := E ^ (k * 2 * Pi * I / n) * u2[a, b] ^ (2.0 / n);
+
+x = 0;
+y = 0;
+z = 0;
+\[Alpha] = 0.3;
+t = \[Pi] / 4;
+c = False;
+alpha = \[Alpha] - t;
+
+X = Re[z1k[a, b, n, k1]] + x;
+Y = Re[z2k[a, b, n, k2]] + y;
+Z = Cos[alpha] * Im[z1k[a, b, n, k1]] + Sin[alpha] * Im[z2k[a, b, n, k2]] + z;
+
+Table[With[{a = 1, b = 1}, Evaluate@{X, Y, Z}],{k1, 0, n -1}, { k2, 0, n -1}]
