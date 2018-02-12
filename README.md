@@ -1,3 +1,133 @@
+[](https://www.youtube.com/watch?v=Yz6gltKeoM8)
+A Quintic complex Fermat Surface (power n = 5) is know to provide 10-dimensional String Theory with the 6D Eintein manifold needed for the missing dimensions of Spactime!
+
+Basic String Theory says Spacetime is 10 dimensional; we experience 4 dimensions, 3 in Space and 1 in Time. Quintic (power n = 5) polynomial Calabi Yau space.
+
+"The Elegant Universe", Brian Greene
+"The Fabric of the Cosmos", Brian Greene
+
+- Hanson's algorithm output is phase identification of complex (n ** 2) phase.
+
+CP2 == Complex Projective 2 Space
+
+TODO
+Raplace Rng Divisions with PointAnalysis['centre']
+Provide examples of possible solutions:
+  - Surface with degree 1 curves, produces polysurfaces similar to output from `ConvertToBezier`
+  - Surface from EdgeCurves
+
+Create bouding box around polysrf
+Create Camera alignment from back bottom corner of bbox to upper closest corner
+Move Crv from start point to end point of box
+Set Viewport properties
+  - Parallel
+  - Camera to end of crv
+  - target to bbox
+Save the View
+
+DocumentProperties > Unit > Tolerance
+
+
+import Rhino
+Rhino.RhinoDoc
+# view = rs.__viewhelper('Perspective')
+viewport = doc.Views.ActiveView.ActiveViewport
+viewport.ChangeToParallelProjection(True)
+
+
+What about project to plane then boolean difference anything beneath
+
+Doc.ModelAbsoluteTolerance
+Mesh CatmullClark produces very smooth geom
+
+Can we split mesh generation at fixed point junction
+
+should we group by fixed point junction
+
+We need to split on intersections
+
+See Phone for parametric surface generation examples in Grasshopper
+
+```python
+    # lib/calabi_yau/manifold.py
+
+    def __init__(*args):
+        # ...
+        self.Phases = []
+
+        # NOTE [Figure 5](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+        # Demonstrates phase occurrence. Build algorithm to group accordingly.
+        for i, k1 in enumerate(self.RngK):
+            for i, k2 in enumerate(self.RngK):
+                self.Phases.append([k1, k2])
+```
+
+```python
+    # lib/calabi_yau/calc.py
+
+    PointAnalysis = {'Seq': {}}
+
+    def Seq(cy, point, k1, k2, xi, theta):
+        '''
+        Collect phase paramater pairs for patches with same start/end point
+        '''
+        _ = Report
+        OffsetX, OffsetY = cy.Offset
+        x, y, z = point  # reference point
+
+        try:
+            arr = _['Seq'][(x, y, z)]
+        except KeyError:
+            arr = _['Seq'][(x, y, z)] = []
+
+        def Point(cy, *args):
+            x, y, z = map(
+                lambda i: (i * cy.Scale),
+                Calculate(cy.n, cy.Alpha, *args)  # args[1:]
+            )
+            x = x + OffsetX
+            y = y + OffsetY
+
+            return x, y, z
+
+        for _k1 in cy.RngK:
+            for _k2 in cy.RngK:
+                # Should remake range beginning from k1, this will do for now.
+                # if (k1, k2) == (_k1, _k2):
+                #     return
+
+                if (x, y, z) == Point(cy, _k1, _k2, xi, theta) or (x, y, z) == Point(cy, _k1, _k2, -1, theta):
+                    arr.append((_k1, _k2))
+
+    def Experiment(cy, k1, k2, xi, theta, point):
+        _ = PointAnalysis
+
+        result = ((U1(xi, theta) ** 2) + (U2(xi, theta) ** 2))
+        if result.real == 1:
+            rs.AddTextDot('1', point)  #  'u1(xi, theta) ** 2 + u2(xi, theta) ** 2 = 1'
+
+        if _['centre']:
+            rs.AddTextDot('Centre', point)
+
+        if _['z0'].real == 1 or _['z0'].real == -1:
+            rs.AddPoint(point)
+
+        if _['theta == 0']:
+            if _['minU']:
+                rs.AddTextDot('(theta, xi) = (0, {0})'.format(xi), point)
+
+            # Point of convergence "hyperbolic pie chart"
+            if _['midU']:
+                rs.AddTextDot('(theta, xi) = (0, 0)', point)
+
+            if _['maxU']:
+                Seq(cy, point, k1, k2, xi, theta)
+                rs.AddTextDot('(theta, xi) = (0, {0})'.format(xi), point)
+
+        if _['theta == 45']:
+            rs.AddTextDot('(theta, xi) = (pi/2, 0)', point)
+```
+
 # KunstDev
 
 
