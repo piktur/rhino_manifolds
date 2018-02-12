@@ -12,7 +12,11 @@ import builder
 
 class Manifold:
     '''
-    Adaptation of [Andrew J. Hanson](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) "superquadric" algorithm.
+    Adaptation of [Andrew J. Hanson](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) algorithm.
+
+    Following Hanson's conventions for symbolic representation:
+        * `U == a == xi`
+        * `V == b == theta`
 
     Parameters:
         n : int
@@ -44,11 +48,10 @@ class Manifold:
         RngV : range
         Builder : class
     '''
-    __slots__ = ['n', 'Alpha', 'Step', 'Scale',
-
-                 'Phases',
+    __slots__ = ['n', 'Alpha', 'Step', 'Scale', 'Offset',
+                 'U', 'V',
                  'MinU', 'MaxU', 'StepU', 'CentreU',
-                 'MinV', 'MaxV', 'StepV', 'CentreU',
+                 'MinV', 'MaxV', 'StepV', 'CentreV',
                  'RngK', 'RngU', 'RngV']
 
     def __init__(self, n=1, deg=1.0, step=0.1, scale=1, offset=(0, 0), type=4):
@@ -66,20 +69,22 @@ class Manifold:
         #   self.Alpha = deg - t
         #   self.Alpha = deg * t
         #   self.Alpha = deg * pi
-        t = pi / 4
-        self.Alpha = deg * t
+        #   deg = (t = range(0, 1, 0.1))[1]
+        #   (deg + 0.25) * pi
+        # TODO We should also set a range through 0 > 2 Pi as in [plot_1.nb](/examples/mathematica/plot_1.nb)
+        self.Alpha = deg * pi
         self.Step = step
         self.Scale = scale
         self.Offset = offset
 
+        # NOTE `U` -- "xi" must be odd to guarantee passage through fixed points at
+        # (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0)
+        # [Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
         self.U = int(11)
         self.V = int(11)
 
         self.MinU = -1
         self.MaxU = 1
-        # NOTE `U` -- "xi" must be odd to guarantee passage through fixed points at
-        # (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0)
-        # [Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
         self.StepU = fabs(self.MaxU - self.MinU) / float(self.U - 1)
 
         self.MinV = 0
@@ -93,14 +98,6 @@ class Manifold:
 
         self.CentreU = len(self.RngU) / 2
         self.CentreV = len(self.RngV) / 2
-
-        self.Phases = []
-
-        # NOTE [Figure 5](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
-        # Demonstrates phase occurrence. Build algorithm to group accordingly.
-        for i, k1 in enumerate(self.RngK):
-            for i, k2 in enumerate(self.RngK):
-                self.Phases.append([k1, k2])
 
         if type == 5:
             # TODO
@@ -117,11 +114,14 @@ class Manifold:
             for event in ['on', 'in', 'out']:
                 self.Events.__registry__['.'.join([loop, event])] = []
 
-    def Plot3D(self):
+    def Phase(self):
         '''
-        Iterates `n * n` "phases" plotting the topology of the "Fermat surface" of degree `n`. There are `n * n` `Patch`es per surface.
+        Iterates `n ** 2` "phases" plotting the topology of the
+        "Fermat surface" of degree `n`.
+        There are `n ** 2` `Patch`es per surface.
 
-        Registered 'on', 'in', 'out' callbacks will be executed in turn per nested loop.
+        `Builder` functions registered with 'on', 'in', 'out' events will be
+        called in order once per nested loop.
         '''
         for k1 in self.RngK:
             self.Events.publish('k1.on', self, k1)
@@ -146,16 +146,16 @@ class Manifold:
 
             self.Events.publish('k1.out', self, k1)
 
-        return self
-
     def Build(self):
         '''
-        Build Rhino objects and add to document
+        Register `Builder.__listeners__`
+        Step through Phase loop
+        Add Rhino objects to document
         '''
         builder = self.Builder(self)
 
         if hasattr(self.Builder, '__listeners__') and callable(self.Builder.__listeners__):
             self.Events.register(builder.__listeners__())
 
-        self.Plot3D()
+        self.Phase()
         builder.Render(self)

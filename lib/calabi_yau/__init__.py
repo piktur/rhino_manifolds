@@ -27,13 +27,13 @@ reload(layers)
 
 
 def GetUserInput():
-    n = rs.GetInteger('n', 3, 1, 10)
-    Alpha = rs.GetReal('Degree', 1.0, 0.0, 1.0)
+    n = rs.GetInteger('n', 2, 1, 10)
+    Alpha = rs.GetReal('Degree', 0.25, 0.0, 1.0)
     Density = rs.GetReal('Density', 0.1, 0.01, 0.4)
     Scale = rs.GetInteger('Scale', 100, 1, 100)
-    Offset = rs.GetInteger('Offset', 0, 0, 300)
+    Offset = rs.GetInteger('Offset', 0, -10, 10) * 300
     Offset = (Offset, Offset)
-    Builder = rs.GetInteger('Type', 4, 1, 5)
+    Builder = rs.GetInteger('Type', 3, 1, 5)
 
     return n, Alpha, Density, Scale, Offset, Builder
 
@@ -69,18 +69,20 @@ def GenerateGrid(density=0.1, scale=100, type=4):
 def Batch(dir, density=0.1, scale=100, type=4):
     queue = {}
     offset = scale * 3
-    alpha = rs.frange(0.1, 1.0, 0.1)
+    alpha = 0.25  # rs.frange(0.1, 1.0, 0.1)
 
     for n in rs.frange(2, 6, 1):
-        for a in alpha:
-            out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', str(int(a * 10)))
-            queue[out] = manifold.Manifold(int(n), a, density, scale, (0, 0), type)
+        # for a in alpha:
+        #     out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', str(int(a * 10)))
+        #     queue[out] = manifold.Manifold(int(n), a, density, scale, (0, 0), type)
+        out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', str(int(alpha * 10)))
+        queue[out] = manifold.Manifold(int(n), alpha, density, scale, (0, 0), type)
 
     return queue
 
 
 def Run(*args):
-    if rs.ContextIsRhino:  # rs.ContextIsGrasshopper
+    if rs.ContextIsRhino():  # rs.ContextIsGrasshopper()
         args = GetUserInput()
 
     manifold.Manifold(*args).Build()

@@ -37,15 +37,25 @@ def Export(queue, cb=None, dir='~/Documents/CY'):
             cb()
 
         ExportFile(path)
+        Purge()
 
-        # Reset Document
-        rs.CurrentLayer('Default')
-        rs.Command('_SelAll')
-        rs.Command('_Delete')
 
-        for layer in rs.LayerNames():
-            if layer != 'Default':
-                rs.PurgeLayer(layer)
+def Purge():
+    '''
+    Delete all objects within current Rhino document.
+    '''
+    rs.CurrentLayer('Default')
+
+    for layer in rs.LayerNames():
+        if layer != 'Default':
+            rs.PurgeLayer(layer)
+
+    objs = []
+    objTable = doc.Objects
+    for obj in objTable.GetObjectList(Rhino.DocObjects.ObjectType.AnyObject):
+        objs.append(obj.Id)
+    for guid in objs:
+        objTable.Delete(guid, True)
 
 
 def mkdir_p(path):

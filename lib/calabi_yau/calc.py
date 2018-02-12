@@ -1,78 +1,152 @@
 import cmath
 from math import cos, sin, pi
+import rhinoscriptsyntax as rs
 
-# n = 3
-# E = cmath.e
-# I = cmath.sqrt(-1)
-#
-# def u1(a, b):
-#     return complex(0.5 * (E ** (a + I * b) + E ** (-a - I * b)))
-#
-# def u2(a, b):
-#     return complex(0.5 * (E ** (a + I * b) - E ** (-a - I * b)))
-#
-# def z1k(a, b, n, k):
-#     return complex(E ** (k * 2.0 * pi * I / n) * u1(a, b) ** (2.0 / n))
-#
-# def z2k(a, b, n, k):
-#     return complex(E ** (k * 2.0 * pi * I / n) * u2(a, b) ** (2.0 / n))
-#
-# x = float(0)  # Offset
-# y = float(0)  # Offset
-# z = float(0)  # Offset
-# Alpha = float(0.3)
-# t = math.pi / float(4)
-# alpha = Alpha - t
-# # alpha = Alpha * math.pi
-# a = 1
-# b = 1
-# k1 = 1
-# k2 = 3
-# X = z1k(a, b, n, k1).real + x
-# Y = z2k(a, b, n, k2).real + y
-# Z = (cos(alpha) * z1k(a, b, n, k1).imag) + (sin(alpha) * z2k(a, b, n, k2).imag) + z
+# Parametric functions derived from
+# [Hanson](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf).
+
 
 I = complex(0.0, 1.0)
 
 
-def U1(a, b):
-    m1 = cmath.exp(complex(a, b))
-    m2 = cmath.exp(complex(-a, -b))
-    return (m1 + m2) * 0.5
-
-
-def U2(a, b):
-    m1 = cmath.exp(complex(a, b))
-    m2 = cmath.exp(complex(-a, -b))
-    return (m1 - m2) * 0.5
-
-
-def Z1(a, b, n, k):
-    u1 = U1(a, b) ** (2.0 / n)
-    m1 = cmath.exp(I * ((2.0 * pi * k) / n))
-    return m1 * u1
-
-
-def Z2(a, b, n, k):
-    u2 = U2(a, b) ** (2.0 / n)
-    m2 = cmath.exp(I * ((2.0 * pi * k) / n))
-    return m2 * u2
-
-
-def Calculate(n, alpha, k1, k2, a, b):
+def U1(xi, theta):
     '''
+    Complex extensions of the sine and cosine [Equation (4)](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    See (plot_6.nb)[/examples/mathematica/plot_6.nb]
+    '''
+    # return (0.5 * I) * (cmath.exp(xi + (I * theta)) + cmath.exp(-xi - (I * theta)))
+    return 0.5 * (cmath.exp(complex(xi, theta)) + cmath.exp(complex(-xi, -theta)))
+
+
+def U2(xi, theta):
+    # return (-0.5 * I) * (cmath.exp(xi + (I * theta)) - cmath.exp(-xi - (I * theta)))
+    return 0.5 * (cmath.exp(complex(xi, theta)) - cmath.exp(complex(-xi, -theta)))
+
+
+def phase(n, k):
+    '''
+    Phase factor is the `n`th root of unity for integers 0 < k < (n - 1)
+    [Equation (7)](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    [`CalabiYau.RngK`](/lib/calabi_yau/manifold.py)
+    '''
+    return cmath.exp(k * 2 * pi * I / n)
+
+
+def Z0(z1, z2, n):
+    '''
+    [Equation (3)](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    '''
+    return (z1 ** n) + (z2 ** n)
+
+
+def Z1(xi, theta, n, k):
+    '''
+    [Equation (5)](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    '''
+    u1 = U1(xi, theta) ** (2.0 / n)
+    return phase(n, k) * u1
+
+
+def Z2(xi, theta, n, k):
+    '''
+    [Equation (6)](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    '''
+    u2 = U2(xi, theta) ** (2.0 / n)
+    return phase(n, k) * u2
+
+
+def PZ1(xi, theta, n, k):
+    '''
+    [Hanson, Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    "Power surface: Replace zi --> pzi and Pi/2 --> 2 Pi" What?
+    Is this the polynomial example as in [Figure 7]
+    '''
+    # phase(n, k) * cmath.exp((xi + I * theta) / n)
+    return phase(n, k) * cmath.exp(complex(xi, theta) / n)
+
+
+def PZ2(xi, theta, n, k):
+    return phase(n, -k) * cmath.exp(complex(-xi, -theta) / n)
+
+
+def Genus(n):
+    '''
+    [Equation (8)](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    '''
+    return (n - 1) * (n - 2) / 2
+
+
+def EulerCharacteristic(n):  # Denoted by the Greek lower-case character 'chi'
+    '''
+    [Equation (9)](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    '''
+    return 2 - (2 * Genus(n))  # (3 * n) - (n ** 2)
+
+
+PointAnalysis = {'Seq': {}}
+
+
+def CalculatePoint(n, angle, k1, k2, xi, theta):
+    '''
+    The surface is composed of n ** 2 patches, each parameterized in a rectangular complex domain. The rectangular patches are pieced together about a point in groups of n * 2. The surface has `n` seperate boundary edges.
+
+    The structure and complexity of the surface is characterised by the exponent `n`. In Hanson's parameterization, the surface is computed in a space defined by two real and two imaginary axes The real axes are remapped to **x** and **y**, while the imaginary axes are projected into the depth dimension **z** after rotation by `angle`
+    [Stewart Dickson](https://muse.jhu.edu/article/43586)
+
     Returns:
-        R3 coordinates (x, y, z) as complex
+        R3 coordinates (x, y, z)
 
     Parameters:
         n : int
-        alpha : float
+        angle : float
         k1 : float
         k2 : float
         a : float
         b : float
     '''
-    z1 = Z1(a, b, n, k1)
-    z2 = Z2(a, b, n, k2)
+    _ = PointAnalysis
+    _['z1'] = z1 = Z1(xi, theta, n, k1)
+    _['z2'] = z2 = Z2(xi, theta, n, k2)
+    _['z0'] = z0 = Z0(z1, z2, n)
 
-    return (z1.real), (z2.real), (cos(alpha) * z1.imag + sin(alpha) * z2.imag)
+    # Polynomial form
+    # _['pz1'] = pz1 = PZ1(xi, theta, n, k1)
+    # _['pz2'] = pz2 = PZ2(xi, theta, n, k2)
+
+    _['x'] = x = z1.real
+    _['y'] = y = z2.real
+    _['z'] = z = cos(angle) * z1.imag + sin(angle) * z2.imag
+
+    # Patch predicates
+    # [Figure 4](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    _['z1 == 0'] = round(x, 2) == 0
+    _['z2 == 0'] = round(y, 2) == 0
+
+    _['z0 == 1'] = z0.real == 1
+    _['z0 == -1'] = z0.real == -1
+
+    _['minU'] = round(xi, 1) == -1  # cy.MinU
+    _['midU'] = round(xi, 1) == 0
+    _['maxU'] = round(xi, 1) == 1  # cy.MaxU
+
+    _['theta == 0'] = theta == 0
+    _['theta == 45'] = theta == pi / 4
+    _['theta == 90'] = theta == pi / 2
+
+    # The junction of n patches is a fixed point of a complex phase transformation.
+    # The n curves converging at this fixed point emphasize the dimension of the surface.
+    # Point of convergence "hyperbolic pie chart"
+    _['min0'] = _['theta == 0'] and _['minU']
+    # _['mid0'] = _['z1 == 0'] or _['z2 == 0'] and _['midU']
+    _['centre'] = _['mid0'] = _['theta == 0'] and _['midU']
+    _['max0'] = _['theta == 0'] and _['maxU']
+
+    _['min45'] = _['theta == 45'] and _['minU']
+    _['mid45'] = _['theta == 45'] and _['midU']
+    _['max45'] = _['theta == 45'] and _['maxU']
+
+    _['min90'] = _['theta == 90'] and _['minU']
+    _['mid90'] = _['theta == 90'] and _['midU']
+    _['max90'] = _['theta == 90'] and _['maxU']
+
+    return x, y, z
