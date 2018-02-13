@@ -1,23 +1,37 @@
 # [Calabi Yau](https://bitbucket.org/kunst_dev/snippets)
 
-A Quintic complex Fermat Surface (power n = 5) is known to provide 10-dimensional String Theory with the 6D Einstein manifold needed for the missing dimensions of Spactime!
-
-Basic String Theory says Spacetime is 10 dimensional; we experience 4 dimensions, 3 in Space and 1 in Time. Quintic (power n = 5) polynomial Calabi Yau space.
-
----
-
-[](https://www.youtube.com/watch?v=Yz6gltKeoM8)
-[](http://scholarpedia.org/article/Calabi-Yau_manifold)
-[](https://mathoverflow.net/questions/42707/calabi-yau-manifolds)
-[](http://dimensions-of-time.blogspot.com.au/)
-["The Elegant Universe", Brian Greene]()
-["The Fabric of the Cosmos", Brian Greene]()
-
 ## Review
 
 * 1 Degree Surfaces will often span multiple divisions. `ConvertToBezier` with Degree > 2 Nurbs Surfaces
 * Surface from EdgeCurves creates kink at edge
 * Mesh CatmullClark produces smoother geometry, but can only be converted to 2D from Rhino for Windows 6 and output is erratic
+
+---
+
+* Demonstrate Make2d
+* Demonstrate Export to Illustrator
+* Demonstrate advanced Make2d ops for varied lineweight
+* Compare Rhino 6 results
+* Compare WireMesh to Bezier
+
+---
+
+Copy `./Libraries` Grasshopper plugins to
+`~/Library/Application Support/McNeel/Rhinoceros/MacPlugIns/Grasshopper/Libraries`
+
+---
+
+A Quintic complex Fermat Surface (power n = 5) is known to provide 10-dimensional String Theory with the 6D Einstein manifold needed for the missing dimensions of Spactime!
+
+Basic String Theory says Spacetime is 10 dimensional; we experience 4 dimensions, 3 in Space and 1 in Time. Quintic (power n = 5) polynomial Calabi Yau space.
+
+* [1](https://www.youtube.com/watch?v=Yz6gltKeoM8)
+* [2](http://scholarpedia.org/article/Calabi-Yau_manifold)
+* [3](https://mathoverflow.net/questions/42707/calabi-yau-manifolds)
+* [4](http://dimensions-of-time.blogspot.com.au/)
+* [5](http://prideout.net/blog/?p=44)
+* ["The Elegant Universe", Brian Greene]()
+* ["The Fabric of the Cosmos", Brian Greene]()
 
 ## Algorithm
 
@@ -36,12 +50,9 @@ depiction of the complete manifold and so is still a sufficient
 
 > -- <cite>[Hanson, Andrew J.][1]</cite>
 
-[](https://www.semanticscholar.org/paper/A-Construction-for-Computer-Visualization-of-Certa-Hanson/8861c0026a89af89b19e9df7267846ec056461c1?citingPapersSort=is-influential&citingPapersLimit=10&citingPapersOffset=10&citedPapersSort=is-influential&citedPapersLimit=10&citedPapersOffset=0)
+[Additional References](https://www.semanticscholar.org/paper/A-Construction-for-Computer-Visualization-of-Certa-Hanson/8861c0026a89af89b19e9df7267846ec056461c1?citingPapersSort=is-influential&citingPapersLimit=10&citingPapersOffset=10&citedPapersSort=is-influential&citedPapersLimit=10&citedPapersOffset=0)
 
-
-## "Parametric" Algorithm
-
-[](http://prideout.net/blog/?p=44)
+---
 
 ## Tools
 
@@ -63,7 +74,7 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
 
 ### Rhino
 
-[](http://developer.rhino3d.com/guides/rhinopython/primer-101/)
+* [1](http://developer.rhino3d.com/guides/rhinopython/primer-101/)
 
 1. [Points](/lib/calabi/manifold.py) [[Source](http://www.tanjiasi.com/surface-design/)]
 
@@ -149,9 +160,10 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
 
 ### Processing.py
 
-[createGraphics()](http://py.processing.org/reference/createGraphics.html)
-[PDF Export](https://www.processing.org/reference/libraries/pdf/index.html)
-[Rhino > Processing](https://www.cs.rpi.edu/~cutler/gaudi/objImport/html/objectImport.html)
+* [createGraphics()](http://py.processing.org/reference/createGraphics.html)
+* [PDF Export](https://www.processing.org/reference/libraries/pdf/index.html)
+* [Rhino > Processing](https://www.cs.rpi.edu/~cutler/gaudi/objImport/html/objectImport.html)
+
 ### Mathematica
 
 1. [Wolfram Mathematica - Calabi Yau Manifold](/examples/mathematica/plot_1.nb)  [[Source](http://demonstrations.wolfram.com/CalabiYauSpace/)]
@@ -188,8 +200,7 @@ Rhino application files are accessible from: `/Applications/RhinoWIP.app/Content
 
 ---
 
-- [#1] Transpose Complex Ops
-
-- [#2] Decompile Assembly
+* [#1] Transpose Complex Ops
+* [#2] Decompile Assembly
 
 [1]:https://pdfs.semanticscholar.org/a51f/16741a6452effe2c3773577484fc88948f40.pdf
