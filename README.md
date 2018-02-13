@@ -1,52 +1,71 @@
-[](https://www.youtube.com/watch?v=Yz6gltKeoM8)
-A Quintic complex Fermat Surface (power n = 5) is know to provide 10-dimensional String Theory with the 6D Eintein manifold needed for the missing dimensions of Spactime!
+# [Calabi Yau](https://bitbucket.org/kunst_dev/snippets)
+
+A Quintic complex Fermat Surface (power n = 5) is known to provide 10-dimensional String Theory with the 6D Einstein manifold needed for the missing dimensions of Spactime!
 
 Basic String Theory says Spacetime is 10 dimensional; we experience 4 dimensions, 3 in Space and 1 in Time. Quintic (power n = 5) polynomial Calabi Yau space.
 
-"The Elegant Universe", Brian Greene
-"The Fabric of the Cosmos", Brian Greene
+---
 
-- Hanson's algorithm output is phase identification of complex (n ** 2) phase.
+[](https://www.youtube.com/watch?v=Yz6gltKeoM8)
+[](http://scholarpedia.org/article/Calabi-Yau_manifold)
+[](https://mathoverflow.net/questions/42707/calabi-yau-manifolds)
+[](http://dimensions-of-time.blogspot.com.au/)
+["The Elegant Universe", Brian Greene]()
+["The Fabric of the Cosmos", Brian Greene]()
 
-CP2 == Complex Projective 2 Space
+## Review
 
-TODO
-Raplace Rng Divisions with PointAnalysis['centre']
-Provide examples of possible solutions:
-  - Surface with degree 1 curves, produces polysurfaces similar to output from `ConvertToBezier`
-  - Surface from EdgeCurves
+* 1 Degree Surfaces will often span multiple divisions. `ConvertToBezier` with Degree > 2 Nurbs Surfaces
+* Surface from EdgeCurves creates kink at edge
+* Mesh CatmullClark produces smoother geometry, but can only be converted to 2D from Rhino for Windows 6 and output is erratic
 
-Create bouding box around polysrf
-Create Camera alignment from back bottom corner of bbox to upper closest corner
-Move Crv from start point to end point of box
-Set Viewport properties
-  - Parallel
-  - Camera to end of crv
-  - target to bbox
-Save the View
+## Algorithm
 
-DocumentProperties > Unit > Tolerance
+[Andrew J. Hanson's algorithm](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) and [summary](http://aleph.se/andart2/)
+
+> Full disclosure obligates me to point out that the visualizations
+in Figure 6 are vastly misleading. The full 6D manifold is
+actually closed and compact, with Euler characteristic –200.
+Among other subtle details, the 2D cross-section in Figure
+6a should have its five circular outer edges that extend to
+infinity closed up to make a surface of genus 6. Nevertheless,
+the open-edged version of the quintic in Figure 6 contains
+enough information to check that it’s a consistent local
+depiction of the complete manifold and so is still a sufficient
+(although not ideal) representation.
+
+> -- <cite>[Hanson, Andrew J.][1]</cite>
+
+[](https://www.semanticscholar.org/paper/A-Construction-for-Computer-Visualization-of-Certa-Hanson/8861c0026a89af89b19e9df7267846ec056461c1?citingPapersSort=is-influential&citingPapersLimit=10&citingPapersOffset=10&citedPapersSort=is-influential&citedPapersLimit=10&citedPapersOffset=0)
 
 
-import Rhino
-Rhino.RhinoDoc
-# view = rs.__viewhelper('Perspective')
-viewport = doc.Views.ActiveView.ActiveViewport
-viewport.ChangeToParallelProjection(True)
+## "Parametric" Algorithm
 
+[](http://prideout.net/blog/?p=44)
 
-What about project to plane then boolean difference anything beneath
+## Tools
 
-Doc.ModelAbsoluteTolerance
-Mesh CatmullClark produces very smooth geom
+### Text Editor
 
-Can we split mesh generation at fixed point junction
+Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-mathematica`](https://atom.io/packages/linter-mathematica) and [`rhino-python`](https://atom.io/packages/rhino-python) Syntax Packages.
 
-should we group by fixed point junction
+### Wolfram
 
-We need to split on intersections
+[Wolfram Programming Lab](https://lab.open.wolframcloud.com/app/view/newNotebook?ext=nb) provides free Mathematica sandpit.
 
-See Phone for parametric surface generation examples in Grasshopper
+### [Sketchup]()
+
+### [Rhino](http://www.rhino3d.com/download/rhino-for-mac/5/wip)
+
+---
+
+## Examples
+
+### Rhino
+
+[](http://developer.rhino3d.com/guides/rhinopython/primer-101/)
+
+1. [Points](/lib/calabi/manifold.py) [[Source](http://www.tanjiasi.com/surface-design/)]
 
 ```python
     # lib/calabi_yau/manifold.py
@@ -127,66 +146,6 @@ See Phone for parametric surface generation examples in Grasshopper
         if _['theta == 45']:
             rs.AddTextDot('(theta, xi) = (pi/2, 0)', point)
 ```
-
-# KunstDev
-
-
-[Snippets](https://bitbucket.org/kunst_dev/snippets)
-
-## Calabi Yau
-
----
-[](http://scholarpedia.org/article/Calabi-Yau_manifold)
-[](https://mathoverflow.net/questions/42707/calabi-yau-manifolds)
-[](http://dimensions-of-time.blogspot.com.au/)
-
-## Algorithm
-
-[Andrew J. Hanson's algorithm](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) and [summary](http://aleph.se/andart2/)
-
-> Full disclosure obligates me to point out that the visualizations
-in Figure 6 are vastly misleading. The full 6D manifold is
-actually closed and compact, with Euler characteristic –200.
-Among other subtle details, the 2D cross-section in Figure
-6a should have its five circular outer edges that extend to
-infinity closed up to make a surface of genus 6. Nevertheless,
-the open-edged version of the quintic in Figure 6 contains
-enough information to check that it’s a consistent local
-depiction of the complete manifold and so is still a sufficient
-(although not ideal) representation.
-
-> -- <cite>[Hanson, Andrew J.][1]</cite>
-
-[](https://www.semanticscholar.org/paper/A-Construction-for-Computer-Visualization-of-Certa-Hanson/8861c0026a89af89b19e9df7267846ec056461c1?citingPapersSort=is-influential&citingPapersLimit=10&citingPapersOffset=10&citedPapersSort=is-influential&citedPapersLimit=10&citedPapersOffset=0)
-
-
-## "Parametric" Algorithm
-
-[](http://prideout.net/blog/?p=44)
-
-## Tools
-
-### Text Editor
-
-Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-mathematica`](https://atom.io/packages/linter-mathematica) and [`rhino-python`](https://atom.io/packages/rhino-python) Syntax Packages.
-
-### Wolfram
-
-[Wolfram Programming Lab](https://lab.open.wolframcloud.com/app/view/newNotebook?ext=nb) provides free Mathematica sandpit.
-
-### [Sketchup]()
-
-### [Rhino](http://www.rhino3d.com/download/rhino-for-mac/5/wip)
-
----
-
-## Examples
-
-### Rhino
-
-[](http://developer.rhino3d.com/guides/rhinopython/primer-101/)
-
-1. [Points](/lib/calabi/manifold.py) [[Source](http://www.tanjiasi.com/surface-design/)]
 
 ### Processing.py
 

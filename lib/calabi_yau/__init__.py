@@ -23,14 +23,14 @@ reload(layers)
 
 def GetUserInput():
     n = rs.GetInteger('n', 2, 1, 10)
-    Alpha = rs.GetReal('Degree', 0.25, 0.0, 2.0)
-    Density = rs.GetReal('Density', 0.1, 0.01, 0.4)
-    Scale = rs.GetInteger('Scale', 100, 1, 100)
-    Offset = rs.GetInteger('Offset', 0, -10, 10) * 300
-    Offset = (Offset, Offset)
-    Builder = rs.GetInteger('Type', 3, 1, 5)
+    alpha = rs.GetReal('Degree', 0.25, 0.0, 2.0)
+    density = rs.GetReal('Density', 0.1, 0.01, 0.4)
+    scale = rs.GetInteger('Scale', 100, 1, 100)
+    offset = rs.GetInteger('Offset', 0, -10, 10) * 300
+    offset = (offset, offset)
+    builder = rs.GetInteger('Type', 3, 1, 5)
 
-    return n, Alpha, Density, Scale, Offset, Builder
+    return n, alpha, density, scale, offset, builder
 
 
 def GenerateGrid(density=0.1, scale=100, type=4):

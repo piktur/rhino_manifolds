@@ -20,10 +20,10 @@ rs.UnitSystem(13, False, True)
 # Allow rotation when in Parallel
 ApplicationSettings.ViewSettings.AlwaysPanParallelViews = False
 
-dir = '/Users/daniel/Documents/Design/export'
 
 if __name__ == '__main__':
-    dir = rs.GetString('Destination', dir)
-    Export(CalabiYau.Batch(dir), CalabiYau.Layers, dir)
-
-    # CalabiYau.Run()
+    if rs.GetBoolean('Export', False):
+        dir = rs.GetString('Destination', '/Users/daniel/Documents/Design/export')
+        Export(CalabiYau.Batch(dir), CalabiYau.Layers, dir)
+    else:
+        CalabiYau.Run()
