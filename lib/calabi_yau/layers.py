@@ -1,13 +1,14 @@
 import System.Guid
-import System.Drawing
+from System.Drawing import Color
 from scriptcontext import doc
 import rhinoscriptsyntax as rs
-from Rhino.Geometry import Vector3d, Plane, Point3d, Brep, Intersect, Curve
+from Rhino.Geometry.Intersect import Intersection
+from Rhino.Geometry import Vector3d, Plane, Point3d, Brep, Curve
 from Rhino.Collections import Point3dList, CurveList
 
 
 layers = [
-    'PolySrf',              # `Join` Patches
+    'PolySurface',          # `Join` Patches
     'Intersect::Curves',    # Perform before `Join`. `Intersection` Curves
     'Intersect::Points',
     'Border::All',          # `Join` + `DupBorder`
@@ -15,6 +16,8 @@ layers = [
     'Silhouette',           # `Join` + `Silhouette`. Weird artifacts across surface
     'Wireframe',            # Set `SurfaceIsocurveDensity` then `Join` + `ExtractWireframe`.
     'RenderMesh',           # Set `SurfaceIsocurveDensity` then `Join` + `ExtractRenderMesh`.
+    'BoundingBox',
+    'Camera',
     '2D'                    # Project to 2D plane
 ]
 
@@ -22,10 +25,11 @@ layers = [
 def Build():
     Layers()
     Patches()
+    # SplitAtIntersection()
     Intersect()
     Border()
     # Silhouette()
-    Wireframe()
+    # Wireframe()
     SetCamera()
 
     rs.EnableRedraw(True)
@@ -33,100 +37,144 @@ def Build():
 
 
 def Layers():
+    for str in ('01', '02', '03', '04', '05'):
+        layer = ' '.join(['Layer', str])
+        if rs.IsLayer(layer):
+            rs.DeleteLayer(layer)
+
     for layer in layers:
         if not rs.IsLayer(layer):
-            layer = rs.AddLayer(layer, System.Drawing.Color.Black)
-            rs.LayerVisible(layer, False)
+            layer = rs.AddLayer(layer)
+            # rs.LayerVisible(layer, False)
+
+
+def SelectBreps(n=10):
+    '''
+    rs.ObjectsByType(rs.filter.surface, True)
+    return rs.SelectedObjects()
+    '''
+    arr = []
+
+    for k1 in range(n):
+        for k2 in range(n):
+            layer = '::'.join(['Surfaces', str(k1), str(k2)])
+            if rs.IsLayer(layer):
+                for id in rs.ObjectsByLayer(layer):
+                    arr.append((id, rs.coercebrep(id, True)))
+
+    return arr
 
 
 def Patches():
     # surfaces = rs.ObjectsByType(rs.filter.surface | rs.filter.polysurface, True)
     # surfaceIds = ','.join(map(lambda e: e.ToString(), surfaces))
     # Patches = rs.ObjectsByType(rs.filter.surface | rs.filter.polysurface, True)
-    Patches = doc.Objects.FindByLayer('Default')
-    PatchesIds = rs.CopyObjects(Patches)
-    PolySrf = rs.JoinSurfaces(PatchesIds)  # rs.Command('Join')
-    rs.ObjectLayer(PolySrf, 'PolySrf')
+
+    patches = []
+
+    for arr in SelectBreps():
+        id, brep = arr
+        patches.append(id)
+
+    patches = rs.CopyObjects(patches)
+
+    tolerance = rs.UnitAbsoluteTolerance()
+    rs.UnitAbsoluteTolerance(0.1, True)
+    srf = rs.JoinSurfaces(patches)  # rs.Command('Join')
+    rs.UnitAbsoluteTolerance(tolerance, True)
+
+    rs.ObjectLayer(srf, 'PolySurface')
 
 
 def BoundingBox():
-    PolySrf = rs.ObjectsByLayer('PolySrf')[0]
-    box = rs.BoundingBox(PolySrf)
+    srf = rs.ObjectsByLayer('PolySurface')
+    print srf
+    bx = rs.BoundingBox(srf)
 
-    for i, p in enumerate(box):
-        doc.Objects.AddTextDot(str(i), p)
+    for i, pt in enumerate(bx):
+        print pt
+        # id = doc.Objects.AddTextDot(str(i), p)
+        id = doc.Objects.AddPoint(pt)
+        rs.ObjectLayer(id, 'BoundingBox')
 
-    return box
+    return bx
 
 
 def SetCamera():
-    box = BoundingBox()
-    line = rs.AddLine(box[4], box[2])
-    rs.MoveObject(line, box[4] - box[2])
-    line = rs.coerceline(line)
+    bx = BoundingBox()
+    ln = rs.AddLine(bx[4], bx[2])
+    rs.ObjectLayer(ln, 'Camera')
+    rs.MoveObject(ln, bx[4] - bx[2])
+    ln = rs.coerceline(ln)
 
+    rs.ViewProjection('Perspective', 1)
+    rs.ViewCameraTarget('Perspective', ln.From, ln.To)
     rs.AddNamedView('Base', 'Perspective')
-    rs.ViewProjection('Base', 1)
-    rs.ViewCamera('Base', line.From)
-    rs.ViewTarget('Base', line.To)
-
-    # index = scriptcontext.doc.NamedViews.FindByName('Base')
-    # viewinfo = doc.NamedViews[index]
-
-    # view = doc.Views.ActiveView
-    # if view.MainViewport.PushViewInfo(viewinfo, False):
-    #     view.Redraw()
-
-    # view.ActiveViewport.ChangeToParallelProjection(True)
 
 
-def Split():
-    surfaces = []
+def SplitAtIntersection():
+    '''
+    Split surfaces at intersections.
+    '''
+    surfaces = SelectBreps(10)
     tolerance = doc.ModelAbsoluteTolerance
 
-    for id in rs.ObjectsByLayer('Default'):
-        surfaces.append((id, rs.coercebrep(id, True)))
+    for a in surfaces:
+        brep1_id, brep1 = a
 
-    for obj1 in surfaces:
-        brep1_id, brep1 = obj1
-        for obj2 in surfaces:
-            brep2_id, brep2 = obj2
+        for b in surfaces:
+            brep2_id, brep2 = b
 
             if brep1_id != brep2_id:
-                rc = Intersect.Intersection.BrepBrep(brep1, brep2, tolerance)
-                if rc:
+                result, curves, points = Intersection.BrepBrep(brep1, brep2, tolerance)
+
+                if result:
+                    for curve in curves:
+                        id = doc.Objects.AddCurve(curve)
+                        rs.ObjectLayer(id, 'Intersect::Curves')
+
                     breps = brep1.Split(brep2, tolerance)
 
                     if len(breps) > 0:
                         rhobj = rs.coercerhinoobject(brep1_id, True)
                         if rhobj:
-                            attr = rhobj.Attributes if scriptcontext.id == 1 else None
-                            rc = []
+                            attr = rhobj.Attributes if rs.ContextIsRhino() else None
+                            result = []
+
                             for i in range(len(breps)):
                                 if i == 0:
                                     doc.Objects.Replace(rhobj.Id, breps[i])
-                                    rc.append(rhobj.Id)
+                                    result.append(rhobj.Id)
                                 else:
-                                    rc.append(doc.Objects.AddBrep(breps[i], attr))
+                                    result.append(doc.Objects.AddBrep(breps[i], attr))
                         else:
-                            rc = [doc.Objects.AddBrep(brep) for brep in breps]
+                            result = [doc.Objects.AddBrep(brep) for brep in breps]
 
     doc.Views.Redraw()
+
+
+def ConvertToBeziers():
+    '''
+    TODO
+    '''
+    # for srf in rs.ObjectsByType(rs.filter.surface, True):
+    #     rs.Command('ConvertToBeziers')
+    return
 
 
 def Intersect():
     '''
     # Equivalent to `rs.Command('Intersect')`
-        surfaces = []
-        for obj in rs.ObjectsByLayer('Default'):
-        surfaces.append(rs.coercebrep(obj))
+    surfaces = []
+    for obj in rs.ObjectsByLayer('Surfaces'):
+    surfaces.append(rs.coercebrep(obj))
 
-        for a in surfaces:
-            for b in surfaces:
-                if a != b:
-                    rs.IntersectBreps(a, b, doc.ModelAbsoluteTolerance)
+    for a in surfaces:
+        for b in surfaces:
+            if a != b:
+                rs.IntersectBreps(a, b, doc.ModelAbsoluteTolerance)
     '''
-    rs.CurrentLayer('Default')
+    rs.CurrentLayer('Surfaces')
     rs.ObjectsByType(rs.filter.surface, True)
     rs.Command('_Intersect')
 
@@ -142,12 +190,12 @@ def Intersect():
 
 
 def Border():
-    rs.CurrentLayer('Default')
+    rs.CurrentLayer('Surfaces')
     for Srf in rs.ObjectsByType(rs.filter.surface, True):
         for id in rs.DuplicateSurfaceBorder(Srf, 1):
             rs.ObjectLayer(id, 'Border::All')
 
-    rs.CurrentLayer('PolySrf')
+    rs.CurrentLayer('PolySurface')
     for PolySrf in rs.ObjectsByType(rs.filter.polysurface, True):
         for id in rs.DuplicateSurfaceBorder(PolySrf, 1):
             rs.ObjectLayer(id, 'Border::Outer')
@@ -158,7 +206,7 @@ def Border():
 
 
 def Silhouette():
-    rs.CurrentLayer('PolySrf')
+    rs.CurrentLayer('PolySurface')
     rs.Command('_Silhouette')
     for id in rs.ObjectsByType(rs.filter.curve, True):
         rs.ObjectLayer(id, 'Silhouette')
@@ -167,19 +215,19 @@ def Silhouette():
 
 def Wireframe():
     for i in range(1, 5, 1):
-        rs.CurrentLayer('PolySrf')
+        rs.CurrentLayer('PolySurface')
 
         layer = 'Wireframe::' + str(i)
         if not rs.IsLayer(layer):
-            rs.AddLayer(layer, System.Drawing.Color.Black)
+            rs.AddLayer(layer, Color.Black)
         rs.LayerVisible(layer, False)
 
-        for PolySrf in doc.Objects.FindByLayer('PolySrf'):
+        for PolySrf in doc.Objects.FindByLayer('PolySurface'):
             obj = rs.coercerhinoobject(PolySrf, True, True)
             obj.Attributes.WireDensity = i
             obj.CommitChanges()
 
-        rs.CurrentLayer('PolySrf')
+        rs.CurrentLayer('PolySurface')
 
         rs.ObjectsByType(rs.filter.polysurface, True)
         rs.Command(
@@ -256,7 +304,7 @@ def Make2D():
     # import sys
     #
     #
-    # def addRhinoLayer(layerName, layerColor=System.Drawing.Color.Black):
+    # def addRhinoLayer(layerName, layerColor=Color.Black):
     #     """Creates a Layer in Rhino using a name and optional color. Returns the index of the created layer. If the layer
     #     already exists, no new layer is created."""
     #     docLyrs = doc.Layers
@@ -265,7 +313,7 @@ def Make2D():
     #         layerIndex = docLyrs.Add(layerName,layerColor)
     #     return layerIndex
     #
-    # def layerAttributes(layerName, layerColor=System.Drawing.Color.Black):
+    # def layerAttributes(layerName, layerColor=Color.Black):
     #     """Returns a Rhino ObjectAttributes object for a rhino layer with an optional color."""
     #     att = Rhino.DocObjects.ObjectAttributes()
     #     att.LayerIndex = addRhinoLayer(layerName, layerColor)

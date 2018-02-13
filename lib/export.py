@@ -47,7 +47,7 @@ def Purge():
     rs.CurrentLayer('Default')
 
     for layer in rs.LayerNames():
-        if layer != 'Default':
+        if rs.IsLayer(layer) and layer != 'Default':
             rs.PurgeLayer(layer)
 
     objs = []

@@ -47,6 +47,8 @@ class Patch:
 
 class Builder:
     '''
+    Subdivisions ensure geometry comes together at `Patch.Analysis['centre']`
+
     Attributes:
         CalabiYau : CalabiYau.Manifold
         Points : list<Rhino.Geometry.Point3d>
@@ -107,11 +109,8 @@ class Builder:
             for k2, patch in enumerate(phase):
                 layer = rs.AddLayer('::'.join([parent, str(k2)]), self.Colour(cy.n, k1, k2))
                 cb(phase, patch, layer, ids)
-                print patch.Analysis
 
         doc.Views.Redraw()
-
-        print self.Analysis
 
         return ids
 
@@ -125,31 +124,60 @@ class Builder:
 
         return self.Patch
 
-    def PointAnalysis(self):
+    def PointAnalysis(self, cy, *args):
         '''
         [Figure 4](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
         Store 3d point coordinates at significant angles/U count
         '''
-        if self.Analysis['min0'] is True:
+        k1, k2, xi, theta = args
+        _ = self.Analysis
+
+        _['minU'] = round(xi, 1) == cy.MinU  # -1
+        _['midU'] = round(xi, 1) == (cy.MinU + cy.MaxU)  # 0
+        _['maxU'] = round(xi, 1) == cy.MaxU  # 1
+
+        _['theta == 0'] = theta == 0
+        _['theta == 45'] = theta == pi / 4
+        _['theta == 90'] = theta == pi / 2
+
+        # The junction of n patches is a fixed point of a complex phase transformation.
+        # The n curves converging at this fixed point emphasize the dimension of the surface.
+        # Point of convergence "hyperbolic pie chart"
+        _['min0'] = _['theta == 0'] and _['minU']
+        # _['mid0'] = _['z1 == 0'] or _['z2 == 0'] and _['midU']
+        _['centre'] = _['mid0'] = _['theta == 0'] and _['midU']
+        _['max0'] = _['theta == 0'] and _['maxU']
+
+        _['min45'] = _['theta == 45'] and _['minU']
+        _['mid45'] = _['theta == 45'] and _['midU']
+        _['max45'] = _['theta == 45'] and _['maxU']
+
+        _['min90'] = _['theta == 90'] and _['minU']
+        _['mid90'] = _['theta == 90'] and _['midU']
+        _['max90'] = _['theta == 90'] and _['maxU']
+
+        if _['min0'] is True:
             self.Patch.Analysis['min0'] = self.Point
-        elif self.Analysis['mid0'] is True:
+        elif _['mid0'] is True:
             self.Patch.Analysis['centre'] = self.Patch.Analysis['mid0'] = self.Point
-        elif self.Analysis['max0'] is True:
+        elif _['max0'] is True:
             self.Patch.Analysis['max0'] = self.Point
 
-        elif self.Analysis['min45'] is True:
+        elif _['min45'] is True:
             self.Patch.Analysis['min45'] = self.Point
-        elif self.Analysis['mid45'] is True:
+        elif _['mid45'] is True:
             self.Patch.Analysis['mid45'] = self.Point
-        elif self.Analysis['max45'] is True:
+        elif _['max45'] is True:
             self.Patch.Analysis['max45'] = self.Point
 
-        elif self.Analysis['min90'] is True:
+        elif _['min90'] is True:
             self.Patch.Analysis['min90'] = self.Point
-        elif self.Analysis['mid90'] is True:
+        elif _['mid90'] is True:
             self.Patch.Analysis['mid90'] = self.Point
-        elif self.Analysis['max90'] is True:
+        elif _['max90'] is True:
             self.Patch.Analysis['max90'] = self.Point
+
+        return _
 
     def BuildPoint(self, cy, *args):
         '''
@@ -172,7 +200,7 @@ class Builder:
         self.Patch.Points.Add(self.Point)
         self.PointCount += 1
 
-        self.PointAnalysis()
+        self.PointAnalysis(cy, *args)
 
         return self.Point
 
@@ -393,19 +421,24 @@ class CurveBuilder(Builder):
         return listeners
 
     def AddEdges(self, cy, *args):
+        # "rails"
         self.A = []
-        self.B = []
         self.C = []
-        self.D = []
 
         self.A1 = []
-        self.B1 = []
-        self.C1 = []
-        self.D1 = []
-
         self.A2 = []
-        self.B2 = []
+
+        self.C1 = []
         self.C2 = []
+
+        # "cross-sections"
+        self.B = []
+        self.D = []
+
+        self.B1 = []
+        self.B2 = []
+
+        self.D1 = []
         self.D2 = []
 
     def PlotEdges(self, cy, *args):
@@ -414,22 +447,28 @@ class CurveBuilder(Builder):
         '''
         k1, k2, a, b = args
 
-        if a == cy.RngU[0]:
+        # "rails"
+        if a == cy.RngU[0]:  # self.Analysis['min90']:
             self.A.append(self.Point)
             self.A1.append(self.Point)
-        if a == cy.RngU[cy.CentreU]:
+
+        if a == cy.RngU[cy.CentreU]:  # self.Analysis['mid90']:
             self.C1.append(self.Point)
             self.C2.append(self.Point)
-        if a == cy.RngU[-1]:
+
+        if a == cy.RngU[-1]:  # self.Analysis['max90']:
             self.C.append(self.Point)
             self.A2.append(self.Point)
 
+        # "cross-sections"
         if b == cy.RngV[0]:
             self.B.append(self.Point)
+
             if len(self.B1) <= cy.CentreV:
                 self.B1.append(self.Point)
             if len(self.B1) > cy.CentreV:
                 self.B2.append(self.Point)
+
         if b == cy.RngV[-1]:
             self.D.append(self.Point)
             if len(self.D1) <= cy.CentreV:
@@ -487,27 +526,23 @@ class CurveBuilder(Builder):
                 A2, C2, B2, D2 = Edges2
 
                 for e in (1, 2):
-                    for i, char in enumerate(('A', 'C', 'B')):  # 'D'
+                    for i, char in enumerate(('A', 'C', 'B', 'D')):
                         var = char + str(e)
                         colour = self.__colour__[-k1][i]
-                        print colour
                         layer = rs.AddLayer('::'.join([parent, var]), colour)
 
                         curve = eval(var)
                         id = doc.Objects.AddCurve(curve)
+                        self.__rendered__(id)
                         rs.ObjectLayer(id, layer)
 
                         # self.DemarcateCurveCentre('[' + str(k1) + ',' + str(k2) + ']', curve)
 
-                # for edgeGroup in Edges1, Edges2:
-                #     for curve in edgeGroup:
-                #         curve = doc.Objects.AddCurve(curve)
-                #         if self.__rendered__(curve):
-                #             rs.AddObjectToGroup(curve, patchGroup)
-                #
+                # for edgeGroup in (Edges1, Edges2):
                 #     # Create Boundary Representation
-                #     self.Patch.Brep = Brep.CreateEdgeSurface(edgeGroup)
-                #     self.__rendered__(doc.Objects.AddBrep(self.Patch.Brep))
+                #     # self.Patch.Brep = Brep.CreateEdgeSurface(edgeGroup)
+                #     # id = doc.Objects.AddBrep(self.Patch.Brep)
+                #     # self.__rendered__(id)
                 #
                 #     # Create Nurbs Surface from curves
                 #     surface, err = NurbsSurface.CreateNetworkSurface(
@@ -517,25 +552,16 @@ class CurveBuilder(Builder):
                 #         0.1,
                 #         1.0
                 #     )
-                #     self.__rendered__(doc.Objects.AddSurface(surface))
+                #     id = doc.Objects.AddSurface(surface)
+                #     self.__rendered__(id)
 
 
 class SurfaceBuilder(Builder):
     '''
-    TODO
-        * Optimise curvature degree and U/V count.
-
-
-    Build "quadratic" surfaces and/or curve objects per patch.
-    Refer to
-    [Curves Experimentation](https://bitbucket.org/snippets/kunst_dev/X894E8)
-
-    Panelling tools or possible methods:
-        rs.AddSrfControlPtGrid
-        NurbsSurface.CreateNetworkSurface
-        NetworkSrf
-        Rhino.AddNetworkSrf
+    Build quadrilateral surfaces.
+    See [Example](https://bitbucket.org/snippets/kunst_dev/X894E8)
     '''
+
     __slots__ = Builder.__slots__ + [
         'UDegree', 'VDegree',
         '__points',
@@ -545,8 +571,8 @@ class SurfaceBuilder(Builder):
     def __init__(self, cy):
         Builder.__init__(self, cy)
         # Note: Polysurface created if U and V degrees differ.
-        self.UDegree = 1
-        self.VDegree = 1
+        self.UDegree = 2
+        self.VDegree = 2
         self.UCount = 0
         self.VCount = 0
 
@@ -584,7 +610,7 @@ class SurfaceBuilder(Builder):
     def AddSurfaceSubdivision(self, cy, *args):
         k1, k2, a = args
 
-        if a == cy.RngU[cy.CentreU]:
+        if self.Analysis['mid90']:  # a == cy.RngU[cy.CentreU]
             self.BuildSurface(cy, *args)  # Finalise current subdivision
             self.AddSurface(cy, *args)  # Begin next subdivision
             self.__points = Point3dList(self.Points[-cy.U:])
@@ -606,16 +632,6 @@ class SurfaceBuilder(Builder):
                 if point.X == 0 or point.Y == 0:
                     cp = ControlPoint(point.X, point.Y, point.Z, 1000)
                     surface.Points.SetControlPoint(0, cy.V / 2, cp)
-        ```
-
-        ```
-            surface, err = NurbsSurface.CreateNetworkSurface(
-                edges,
-                1,
-                0.001,
-                0.001,
-                0.001
-            )
         ```
         '''
         surface = NurbsSurface.CreateFromPoints(

@@ -2,16 +2,14 @@ import cmath
 from math import cos, sin, pi
 import rhinoscriptsyntax as rs
 
-# Parametric functions derived from
-# [Hanson](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf).
-
 
 I = complex(0.0, 1.0)
 
 
 def U1(xi, theta):
     '''
-    Complex extensions of the sine and cosine [Equation (4)](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+    Complex extensions of the sine and cosine
+    [Equation (4)](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
     See (plot_6.nb)[/examples/mathematica/plot_6.nb]
     '''
     # return (0.5 * I) * (cmath.exp(xi + (I * theta)) + cmath.exp(-xi - (I * theta)))
@@ -88,9 +86,16 @@ PointAnalysis = {'Seq': {}}
 
 def CalculatePoint(n, angle, k1, k2, xi, theta):
     '''
-    The surface is composed of n ** 2 patches, each parameterized in a rectangular complex domain. The rectangular patches are pieced together about a point in groups of n * 2. The surface has `n` seperate boundary edges.
+    The surface is composed of n ** 2 patches, each parameterized in a
+    rectangular complex domain. The rectangular patches are pieced together
+    about a point in groups of n * 2. The surface has `n` seperate boundary
+    edges.
 
-    The structure and complexity of the surface is characterised by the exponent `n`. In Hanson's parameterization, the surface is computed in a space defined by two real and two imaginary axes The real axes are remapped to **x** and **y**, while the imaginary axes are projected into the depth dimension **z** after rotation by `angle`
+    The structure and complexity of the surface is characterised by the
+    exponent `n`. In Hanson's parameterization, the surface is computed in a
+    space defined by two real and two imaginary axes The real axes are remapped
+    to **x** and **y**, while the imaginary axes are projected into the depth
+    dimension **z** after rotation by `angle`
     [Stewart Dickson](https://muse.jhu.edu/article/43586)
 
     Returns:
@@ -124,29 +129,5 @@ def CalculatePoint(n, angle, k1, k2, xi, theta):
 
     _['z0 == 1'] = z0.real == 1
     _['z0 == -1'] = z0.real == -1
-
-    _['minU'] = round(xi, 1) == -1  # cy.MinU
-    _['midU'] = round(xi, 1) == 0
-    _['maxU'] = round(xi, 1) == 1  # cy.MaxU
-
-    _['theta == 0'] = theta == 0
-    _['theta == 45'] = theta == pi / 4
-    _['theta == 90'] = theta == pi / 2
-
-    # The junction of n patches is a fixed point of a complex phase transformation.
-    # The n curves converging at this fixed point emphasize the dimension of the surface.
-    # Point of convergence "hyperbolic pie chart"
-    _['min0'] = _['theta == 0'] and _['minU']
-    # _['mid0'] = _['z1 == 0'] or _['z2 == 0'] and _['midU']
-    _['centre'] = _['mid0'] = _['theta == 0'] and _['midU']
-    _['max0'] = _['theta == 0'] and _['maxU']
-
-    _['min45'] = _['theta == 45'] and _['minU']
-    _['mid45'] = _['theta == 45'] and _['midU']
-    _['max45'] = _['theta == 45'] and _['maxU']
-
-    _['min90'] = _['theta == 90'] and _['minU']
-    _['mid90'] = _['theta == 90'] and _['midU']
-    _['max90'] = _['theta == 90'] and _['maxU']
 
     return x, y, z
