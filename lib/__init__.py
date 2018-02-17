@@ -12,17 +12,17 @@ reload(CalabiYau)
 rs.EnableRedraw(True)
 
 # Configure measurement unit and tolerances
-rs.UnitAbsoluteTolerance(0.0000000001, True)
+# [Accuracy](https://www.rhino3d.com/accuracy)
+rs.UnitAbsoluteTolerance(0.1, True)  # 0.0000000001
 rs.UnitAngleTolerance(0.1, True)
-rs.UnitRelativeTolerance(1.0, True)
-rs.UnitSystem(13, False, True)
+rs.UnitRelativeTolerance(0.1, True)
+rs.UnitSystem(13, False, True)  # 13 == 'nanometres'
 
 # Allow rotation when in Parallel
 ApplicationSettings.ViewSettings.AlwaysPanParallelViews = False
 
-
 if __name__ == '__main__':
-    if rs.GetBoolean('Export', False):
+    if rs.GetInteger('Export', 0) != 0:
         dir = rs.GetString('Destination', '/Users/daniel/Documents/Design/export')
         Export(CalabiYau.Batch(dir), CalabiYau.Layers, dir)
     else:

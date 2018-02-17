@@ -22,13 +22,13 @@ reload(layers)
 
 
 def GetUserInput():
-    n = rs.GetInteger('n', 2, 1, 10)
+    n = rs.GetInteger('n', 5, 1, 10)
     alpha = rs.GetReal('Degree', 0.25, 0.0, 2.0)
     density = rs.GetReal('Density', 0.1, 0.01, 0.4)
     scale = rs.GetInteger('Scale', 100, 1, 100)
     offset = rs.GetInteger('Offset', 0, -10, 10) * 300
     offset = (offset, offset)
-    builder = rs.GetInteger('Type', 3, 1, 5)
+    builder = rs.GetInteger('Type', 4, 1, 5)
 
     return n, alpha, density, scale, offset, builder
 
@@ -159,8 +159,9 @@ class Manifold:
         # NOTE `U` -- "xi" must be odd to guarantee passage through fixed points at
         # (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0)
         # [Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
-        self.U = int(21)  # 11
-        self.V = int(21)  # 11
+        # Performance reduced if > 55
+        self.U = 55  # 11, 21, 55, 107, 205 [110]
+        self.V = 55
 
         self.MinU = -1
         self.MaxU = 1

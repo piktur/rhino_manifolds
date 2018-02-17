@@ -132,13 +132,21 @@ class Builder:
         k1, k2, xi, theta = args
         _ = self.Analysis
 
+        # if self.PointCount < cy.U * cy.V:
+        #     if round(xi, 1) == (cy.MinU + cy.MaxU):
+        #         print round(xi, 1)
+        #         if round(theta, 5) == round(pi / 2, 5):
+        #             print theta
+
         _['minU'] = round(xi, 1) == cy.MinU  # -1
         _['midU'] = round(xi, 1) == (cy.MinU + cy.MaxU)  # 0
         _['maxU'] = round(xi, 1) == cy.MaxU  # 1
 
-        _['theta == 0'] = theta == 0
-        _['theta == 45'] = theta == pi / 4
-        _['theta == 90'] = theta == pi / 2
+        # TODO what about pi / n
+        # TODO what about pi / an odd number
+        _['theta == 0'] = round(theta, 5) == float(0)
+        _['theta == 45'] = round(theta, 5) == round(pi / 4, 5)
+        _['theta == 90'] = round(theta, 5) == round(pi / 2, 5)
 
         # The junction of n patches is a fixed point of a complex phase transformation.
         # The n curves converging at this fixed point emphasize the dimension of the surface.
@@ -571,8 +579,8 @@ class SurfaceBuilder(Builder):
     def __init__(self, cy):
         Builder.__init__(self, cy)
         # Note: Polysurface created if U and V degrees differ.
-        self.UDegree = 2
-        self.VDegree = 2
+        self.UDegree = 3
+        self.VDegree = 3
         self.UCount = 0
         self.VCount = 0
 
