@@ -21,6 +21,16 @@ Copy `./Libraries` Grasshopper plugins to
 
 ---
 
+## TODO
+
+* Combine builders
+* Find self intersections
+    - Analyse Theta at intersection
+* Split breps
+* Extract IsoCurves
+* Add calabi_yau/layers.py methods to calabi_yau/__init__.py
+---
+
 A Quintic complex Fermat Surface (power n = 5) is known to provide 10-dimensional String Theory with the 6D Einstein manifold needed for the missing dimensions of Spactime!
 
 Basic String Theory says Spacetime is 10 dimensional; we experience 4 dimensions, 3 in Space and 1 in Time. Quintic (power n = 5) polynomial Calabi Yau space.

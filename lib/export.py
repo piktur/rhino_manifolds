@@ -85,33 +85,3 @@ def ExportFile(filePath, version=5, geomOnly=False, selectedOnly=False):
     opt.WriteSelectedObjectsOnly = selectedOnly
 
     return doc.WriteFile(filePath, opt)
-
-
-def ExportLayers(layerNames, filePath, version=4):
-    '''
-    Export only the items on designated layers to a file.
-    [See](https://github.com/localcode/rhinopythonscripts/blob/34c5314/FileTools.py)
-    '''
-    # save selection
-    oldSelection = rs.SelectedObjects()
-
-    # clear selection
-    rs.UnselectAllObjects()
-
-    # add everything on the layers to selection
-    for name in layerNames:
-        objs = scriptcontext.doc.Objects.FindByLayer(name)
-        guids = [obj.Id for obj in objs]
-        doc.Objects.Select.Overloads[SCG.IEnumerable[System.Guid]](guids)
-
-    # export selected items
-    exportFile(filePath, version, selectedOnly=True)
-
-    # clear selection
-    rs.UnselectAllObjects()
-
-    # restore selection
-    if oldSelection:
-        doc.Objects.Select.Overloads[SCG.IEnumerable[System.Guid]](oldSelection)
-
-    # print 'exported %s' % filePath

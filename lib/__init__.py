@@ -3,9 +3,9 @@ import rhinoscriptsyntax as rs
 from scriptcontext import doc
 
 import events
-from export import Export
 import utility
 import calabi_yau as CalabiYau
+from export import Export
 
 reload(CalabiYau)
 
