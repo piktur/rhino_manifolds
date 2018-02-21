@@ -16,12 +16,14 @@ def Palette():
     Returns 2D list of colours 10 * 4
     '''
     arr = []
-    for i in range(25, 255, 25):  # 255 / 25 == 10
+    for i in range(25, 255, 51):  # 255 / 51 == 5
         arr.append((
             Color.FromArgb(i, 0, i),  # Red-Blue
             Color.FromArgb(0, 0, i),  # Blue
             Color.FromArgb(0, i, i),  # Green-Blue
-            Color.FromArgb(0, i, 0)   # Green
+            Color.FromArgb(0, i, 0),  # Green
+            Color.FromArgb(i, i, 0),  # Green-Red
+            Color.FromArgb(i, 0, 0)   # Red
         ))
 
     return arr

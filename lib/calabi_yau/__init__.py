@@ -1,7 +1,7 @@
-import os
 import cmath
 from math import cos, sin, pi, fabs
 from itertools import combinations
+import string
 import System.Guid
 import System.Drawing
 import System.Enum
@@ -22,6 +22,9 @@ from events import EventHandler
 reload(utility)
 reload(export)
 reload(layers)
+
+
+log = open('./log.txt', 'w')
 
 
 def GetUserInput():
@@ -284,8 +287,20 @@ class Builder:
         Scale : int
             [1..100]
         Offset : tuple(int, int)
-        Phases : list
+        ndigits : int
+            Rounding
+        U : int
+        V : int
+        Degree : int
+        UDegree : int
+        VDegree : int
+        UCount : int
+        VCount : int
+        MinU : float
+        MidU : float
         MaxU : float
+        MinV : float
+        MidV : float
         MaxV : float
         StepV : float
         RngK : range
@@ -304,10 +319,12 @@ class Builder:
         PatchCount : int
     '''
     __slots__ = ['n', 'Alpha', 'Step', 'Scale', 'Offset',
+                 'ndigits',
                  'U', 'V',
-                 'UDegree', 'VDegree',
-                 'MinU', 'MaxU', 'StepU', 'CentreU',
-                 'MinV', 'MaxV', 'StepV', 'CentreV',
+                 'Degree', 'UDegree', 'VDegree',
+                 'UCount', 'VCount',
+                 'MinU', 'MidU', 'MaxU', 'StepU', 'CentreU',
+                 'MinV', 'MidV', 'MaxV', 'StepV', 'CentreV',
                  'RngK', 'RngU', 'RngV',
                  'Analysis',
                  'Points', 'Point', 'PointCount',
@@ -332,7 +349,7 @@ class Builder:
 
         # Floating point precision.
         # Increase when self.U and/or self.V increases
-        self.ndigits = 5
+        self.ndigits = 6
 
         # NOTE `U` -- "xi" must be odd to guarantee passage through fixed points at
         # (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0)
@@ -340,15 +357,20 @@ class Builder:
         # Performance reduced if > 55
         self.V = self.U = 55  # 11, 21, 55, 107, 205 [110]
 
-        self.VDegree = self.UDegree = 3
+        self.Degree = self.VDegree = self.UDegree = 3
+
+        # Note: Polysurface created if U and V degrees differ.
+        self.VCount = self.UCount = 0
 
         self.MinU = -1
         self.MaxU = 1
+        self.MidU = (self.MinU + self.MaxU) / 2.0  # 0
         # deduct 1 to accomodate `rs.frange` zero offset
         self.StepU = fabs(self.MaxU - self.MinU) / (self.U - 1.0)
 
         self.MinV = 0
         self.MaxV = float(pi / 2)
+        self.MidV = (self.MinV + self.MaxV) / 2.0  # pi / 4
         # deduct 1 to accomodate `rs.frange` zero offset
         self.StepV = fabs(self.MaxV - self.MinV) / (self.V - 1.0)
 
@@ -457,41 +479,54 @@ class Builder:
 
         # Patch predicates
         # [Figure 4](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
-        _['z0 == 0'] = round(_['z0'].imag, d) == 0
-        _['z0 == 1'] = round(_['z0'].imag, d) == 1
-        _['z0 == -1'] = round(_['z0'].imag, d) == -1
-        _['z1 == 0'] = round(_['z1'].imag, d) == 0
-        _['z2 == 0'] = round(_['z2'].imag, d) == 0
+        z0 = round(_['z0'].imag, d)
+        z1 = round(_['z1'].imag, d)
+        z2 = round(_['z2'].imag, d)
+        _['z0 == 0'] = z0 == 0
+        _['z0 == 1'] = z0 == 1
+        _['z0 == -1'] = z0 == -1
+        _['z1 == 0'] = z1 == 0
+        _['z2 == 0'] = z2 == 0
 
-        _['minU'] = round(xi, 1) == self.MinU  # -1
-        _['midU'] = round(xi, 1) == (self.MinU + self.MaxU)  # 0
-        _['maxU'] = round(xi, 1) == self.MaxU  # 1
+        # Intervals through self.RngU
+        xi = _['xi'] = _['U'] = round(xi, d)
+        _['minU'] = xi == self.MinU  # -1
+        _['<midU'] = xi < round(self.MidU, d)
+        _['<=midU'] = xi <= round(self.MidU, d)
+        _['midU'] = xi == round(self.MidU, d)
+        _['>midU'] = xi > round(self.MidU, d)
+        _['>=midU'] = xi >= round(self.MidU, d)
+        _['maxU'] = xi == self.MaxU  # 1
 
-        # Intervals through RngV
-        # `range(0, 90, 15)`
-        _['theta == 0'] = round(theta, d) == float(0)  # self.MinV
-        _['theta == 15'] = round(theta, d) == round(pi / 12, d)
-        _['theta == 30'] = round(theta, d) == round(pi / 6, d)
-        _['theta == 45'] = round(theta, d) == round(pi / 4, d)
-        _['theta == 60'] = round(theta, d) == round(pi / 3, d)
-        _['theta == 75'] = round(theta, d) == round(pi / 2.4, d)
-        _['theta == 90'] = round(theta, d) == round(pi / 2, d)  # self.MaxV
+        # Intervals through self.RngV
+        theta = _['theta'] = _['V'] = round(theta, d)
+        _['theta == 0'] = theta == float(0)  # self.MinV
+        _['theta == 15'] = theta == round(pi / 12, d)
+        _['theta == 30'] = theta == round(pi / 6, d)
+        _['<midV'] = theta < round(self.MidV, d)
+        _['<=midV'] = theta <= round(self.MidV, d)
+        _['midV'] = _['theta == 45'] = theta == round(self.MidV, d)  # pi / 4
+        _['>midV'] = theta > round(self.MidV, d)
+        _['>=midV'] = theta >= round(self.MidV, d)
+        _['theta == 60'] = theta == round(pi / 3, d)
+        _['theta == 75'] = theta == round(pi / 2.4, d)
+        _['theta == 90'] = theta == round(pi / 2, d)  # self.MaxV
 
         # The junction of n patches is a fixed point of a complex phase transformation.
         # The n curves converging at this fixed point emphasize the dimension of the surface.
         # Point of convergence "hyperbolic pie chart"
-        _['min0'] = _['theta == 0'] and _['minU']
+        _['min0'] = _['minU'] and _['theta == 0']
         # _['mid0'] = _['z1 == 0'] or _['z2 == 0'] and _['midU']
-        _['centre'] = _['mid0'] = _['theta == 0'] and _['midU']
-        _['max0'] = _['theta == 0'] and _['maxU']
+        _['centre'] = _['mid0'] = _['midU'] and _['theta == 0']
+        _['max0'] = _['maxU'] and _['theta == 0']
 
-        _['min45'] = _['theta == 45'] and _['minU']
-        _['mid45'] = _['theta == 45'] and _['midU']
-        _['max45'] = _['theta == 45'] and _['maxU']
+        _['min45'] = _['minU'] and _['theta == 45']
+        _['mid45'] = _['midU'] and _['theta == 45']
+        _['max45'] = _['maxU'] and _['theta == 45']
 
-        _['min90'] = _['theta == 90'] and _['minU']
-        _['mid90'] = _['theta == 90'] and _['midU']
-        _['max90'] = _['theta == 90'] and _['maxU']
+        _['min90'] = _['minU'] and _['theta == 90']
+        _['mid90'] = _['midU'] and _['theta == 90']
+        _['max90'] = _['maxU'] and _['theta == 90']
 
         if _['min0'] is True:
             self.Patch.Analysis['min0'] = self.Point
@@ -514,33 +549,25 @@ class Builder:
         elif _['max90'] is True:
             self.Patch.Analysis['max90'] = self.Point
 
-        # [pi / 5, pi] doesn't give anything of interest
-        if round(theta, d) == round(pi / 3, d):  # YES
-            rs.AddPoint(self.Point)
-
-        if round(theta, d) == round(pi / 4, d):  # YES
-            rs.AddPoint(self.Point)
-
-        if round(theta, d) == round(pi / 6, d):  # YES
-            rs.AddPoint(self.Point)
-
-        if self.Analysis['z1 == 0']:
-            # rs.AddPoint(self.Point)
-            pass
-        if self.Analysis['z2 == 0']:
-            # rs.AddPoint(self.Point)
-            pass
-        if self.Analysis['z0 == 0']:  # YES
-            # rs.AddPoint(self.Point)
-            pass
-        if self.Analysis['z0 == 1']:
-            # rs.AddPoint(self.Point)
-            pass
-        if self.Analysis['z0 == -1']:
-            # rs.AddPoint(self.Point)
-            pass
-
         return _
+
+    def OffsetU(self, steps=1.0):
+        return self.Analysis['U'] == round(self.MidU + (self.StepU * steps), 2)
+
+    def OffsetV(self, steps=1.0):
+        return self.Analysis['V'] == round(self.MidV + (self.StepV * steps), 2)
+
+    def ResetUCount(self, *args):
+        self.UCount = 0
+
+    def ResetVCount(self, *args):
+        self.VCount = 0
+
+    def IncrementVCount(self, *args):
+        self.VCount += 1
+
+    def IncrementUCount(self, *args):
+        self.UCount += 1
 
     def AddPatch(self, *args):
         '''
@@ -578,7 +605,7 @@ class Builder:
         return self.Point
 
     @staticmethod
-    def BuildInterpolatedCurve(points):
+    def BuildInterpolatedCurve(points, degree=3):
         '''
         TODO rescue Exception raised if insufficient points
 
@@ -586,8 +613,6 @@ class Builder:
         `rs.AddInterpCurve`
         '''
         points = rs.coerce3dpointlist(points, True)
-
-        degree = 3
 
         start_tangent = Vector3d.Unset
         start_tangent = rs.coerce3dvector(start_tangent, True)
@@ -609,6 +634,14 @@ class Builder:
             return curve
 
         raise Exception('Unable to CreateInterpolatedCurve')
+
+    @staticmethod
+    def FindCurveCentre(curve, text, layer='Centre'):
+        centre = curve.PointAtNormalizedLength(0.5)
+        id = rs.AddTextDot(text, centre)
+        rs.ObjectLayer(id, layer)
+
+        return id
 
     @staticmethod
     def Colour(n, k1, k2):
@@ -648,7 +681,8 @@ class Builder:
             parent = rs.AddLayer('::'.join([group, str(k1)]))
 
             for k2, patch in enumerate(phase):
-                layer = rs.AddLayer('::'.join([parent, str(k2)]), self.Colour(self.n, k1, k2))
+                colour = self.Colour(self.n, k1, k2)
+                layer = rs.AddLayer('::'.join([parent, str(k2)]), colour)
                 cb(phase, patch, layer, ids)
 
         doc.Views.Redraw()
@@ -713,7 +747,7 @@ class MeshBuilder(Builder):
     def IncrementMeshCount(self, *args):
         k1, k2, a, b = args
 
-        if a == self.RngU[0] and k2 == self.RngK[0] and k1 == self.RngK[0]:
+        if a == self.MinU and k2 == k1 == self.RngK[0]:
             self.MeshCount += 1
 
     def BuildFaces(self, mesh, k1, k2, a, b):
@@ -736,8 +770,8 @@ class MeshBuilder(Builder):
     def BuildMesh(self, *args):
         k1, k2, a, b = args
 
-        if a > self.RngU[0] and b > self.RngV[0]:
-            if a <= self.RngU[self.CentreU]:
+        if a > self.MinU and b > self.MinV:
+            if self.Analysis['<=midU']:
                 self.MeshA = Mesh()
                 self.BuildFaces(self.MeshA, *args)
                 self.Patch.MeshA.Append(self.MeshA)
@@ -765,42 +799,37 @@ class MeshBuilder(Builder):
 class CurveBuilder(Builder):
     __slots__ = Builder.__slots__ + [
         'Edges',
-        'A', 'B', 'C', 'D',
-        'A1', 'B1', 'C1', 'D1',
-        'A2', 'B2', 'C2', 'D2'
+        'R0', 'R1', 'R2',
+        'X0', 'X1',
+        'X2', 'X3',
+        'X4', 'X5',
+        'X6', 'X7',
+        'X8', 'X9'
     ]
 
     def __init__(self, *args):
         Builder.__init__(self, *args)
 
+        # "rails"
+        for char in list(string.digits)[:3]:
+            setattr(self, 'R' + char, [])
+        # "cross-sections"
+        for char in list(string.digits)[:10]:
+            setattr(self, 'X' + char, [])
+
     def __listeners__(self):
         listeners = Builder.__listeners__(self)
-        listeners['k2.in'].append(self.AddEdges)
+        listeners['k2.on'].append(self.AddEdges)
         listeners['b.in'].append(self.PlotEdges)
-        listeners['k2.out'].extend([self.BuildEdges])
+        listeners['k2.out'].append(self.BuildEdges)
 
         return listeners
 
     def AddEdges(self, *args):
-        # "rails"
-        self.A = []
-        self.C = []
-
-        self.A1 = []
-        self.A2 = []
-
-        self.C1 = []
-        self.C2 = []
-
-        # "cross-sections"
-        self.B = []
-        self.D = []
-
-        self.B1 = []
-        self.B2 = []
-
-        self.D1 = []
-        self.D2 = []
+        for char in list(string.digits)[:3]:
+            setattr(self, 'R' + char, Point3dList())
+        for char in list(string.digits)[:9]:
+            setattr(self, 'X' + char, Point3dList())
 
     def PlotEdges(self, *args):
         '''
@@ -809,89 +838,81 @@ class CurveBuilder(Builder):
         k1, k2, a, b = args
 
         # "rails"
-        if a == self.RngU[0]:  # self.Analysis['min90']:
-            self.A.append(self.Point)
-            self.A1.append(self.Point)
-
-        if a == self.RngU[self.CentreU]:  # self.Analysis['mid90']:
-            self.C1.append(self.Point)
-            self.C2.append(self.Point)
-
-        if a == self.RngU[-1]:  # self.Analysis['max90']:
-            self.C.append(self.Point)
-            self.A2.append(self.Point)
+        if self.Analysis['minU']:
+            self.R2.Add(self.Point)
+        elif self.Analysis['midU']:
+            self.R1.Add(self.Point)
+        elif self.Analysis['maxU']:
+            self.R0.Add(self.Point)
 
         # "cross-sections"
-        if b == self.RngV[0]:
-            self.B.append(self.Point)
-
-            if len(self.B1) <= self.CentreV:
-                self.B1.append(self.Point)
-            if len(self.B1) > self.CentreV:
-                self.B2.append(self.Point)
-
-        if b == self.RngV[-1]:
-            self.D.append(self.Point)
-            if len(self.D1) <= self.CentreV:
-                self.D1.append(self.Point)
-            if len(self.D1) > self.CentreV:
-                self.D2.append(self.Point)
+        if self.Analysis['theta == 0']:
+            if self.Analysis['<=midU']:
+                self.X9.Add(self.Point)
+            if self.Analysis['>=midU']:
+                self.X8.Add(self.Point)
+        elif self.Analysis['theta == 30']:
+            if self.Analysis['<=midU']:
+                self.X7.Add(self.Point)
+            if self.Analysis['>=midU']:
+                self.X6.Add(self.Point)
+        elif self.Analysis['theta == 45']:
+            if self.Analysis['<=midU']:
+                self.X5.Add(self.Point)
+            if self.Analysis['>=midU']:
+                self.X4.Add(self.Point)
+        elif self.Analysis['theta == 60']:
+            if self.Analysis['<=midU']:
+                self.X3.Add(self.Point)
+            if self.Analysis['>=midU']:
+                self.X2.Add(self.Point)
+        elif self.Analysis['theta == 90']:
+            if self.Analysis['<=midU']:
+                self.X1.Add(self.Point)
+            if self.Analysis['>=midU']:
+                self.X0.Add(self.Point)
 
     def BuildEdges(self, *args):
-        Edges = CurveList()
-        Edges1 = CurveList()
-        Edges2 = CurveList()
+        R = CurveList()
+        X = CurveList()
 
         # "rails"
-        for points in (self.A, self.C):
-            Edges.Add(Builder.BuildInterpolatedCurve(points))
+        for points in (self.R0, self.R1, self.R2):
+            R.Add(Builder.BuildInterpolatedCurve(points, self.Degree))
 
         # "cross-sections"
-        for points in (self.B, self.D):
-            Edges.Add(Builder.BuildInterpolatedCurve(points))
+        for points in (self.X0, self.X1, self.X2, self.X3, self.X4, self.X5, self.X6, self.X7, self.X8, self.X9):
+            X.Add(Builder.BuildInterpolatedCurve(points, self.Degree))
 
-        # Sub-division "rails"
-        for points in (self.A1, self.C1):
-            Edges1.Add(Builder.BuildInterpolatedCurve(points))
-        for points in (self.A2, self.C2):
-            Edges2.Add(Builder.BuildInterpolatedCurve(points))
-
-        # Sub-division "cross-sections"
-        for points in (self.B1, self.D1):
-            Edges1.Add(Builder.BuildInterpolatedCurve(points))
-        for points in (self.B2, self.D2):
-            Edges2.Add(Builder.BuildInterpolatedCurve(points))
-
-        self.Patch.Edges = [Edges, Edges1, Edges2]
-
-    def DemarcateCurveCentre(self, text, curve, layer='Centre'):
-        centre = curve.PointAtNormalizedLength(0.5)
-        id = rs.AddTextDot(text, centre)
-        rs.ObjectLayer(id, layer)
+        self.Patch.Edges = [R, X]
 
     def Render(self, *args):
-        # rs.AddLayer('Centre', Color.Magenta)
-        parent = rs.AddLayer('Curves')
+        def cb(curve, layer):
+            id = doc.Objects.AddCurve(curve)
+            self.__rendered__(id)
+            rs.ObjectLayer(id, layer)
+
+            # Builder.FindCurveCentre(curve, '[' + str(k1) + ',' + str(k2) + ']')
+
+        group = rs.AddLayer('Curves')
 
         for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
+            parent = rs.AddLayer('::'.join([group, str(k1)]))
+
             for k2, patch in enumerate(phase):
-                Edges, Edges1, Edges2 = patch.Edges
-                A, C, B, D = Edges
-                A1, C1, B1, D1 = Edges1
-                A2, C2, B2, D2 = Edges2
+                R, X = patch.Edges
+                R0, R1, R2 = R
+                X0, X1, X2, X3, X4, X5, X6, X7, X8, X9 = X
 
-                for e in (1, 2):
-                    for i, char in enumerate(('A', 'C', 'B', 'D')):
-                        var = char + str(e)
-                        colour = self.__palette__[-k1][i]
-                        layer = rs.AddLayer('::'.join([parent, var]), colour)
+                # colour = self.__palette__[-k2][-1]
+                colour = self.Colour(self.n, k1, k2)
+                layer = rs.AddLayer('::'.join([parent, str(k2)]), colour)
 
-                        curve = eval(var)
-                        id = doc.Objects.AddCurve(curve)
-                        self.__rendered__(id)
-                        rs.ObjectLayer(id, layer)
+                for char in list(string.digits)[:3]:
+                    cb(eval('R' + char), layer)
 
-                        # self.DemarcateCurveCentre('[' + str(k1) + ',' + str(k2) + ']', curve)
+                for char in list(string.digits)[:9]:
+                    cb(eval('X' + char), layer)
 
                 # for edgeGroup in (Edges1, Edges2):
                 #     # Create Boundary Representation
@@ -910,23 +931,65 @@ class CurveBuilder(Builder):
                 #     id = doc.Objects.AddSurface(surface)
                 #     self.__rendered__(id)
 
+    def Check(self):
+        def PlotIntersection(obj):
+            if obj is None:
+                # print 'Selected curves do not intersect.'
+                return
+            else:
+                events = []
+                for i in xrange(obj.Count):
+                    event_type = 1
+                    if (obj[i].IsOverlap):
+                        event_type = 2
+                    oa = obj[i].OverlapA
+                    ob = obj[i].OverlapB
+                    element = (
+                        event_type,
+                        obj[i].PointA, obj[i].PointA2,
+                        obj[i].PointB, obj[i].PointB2,
+                        oa[0], oa[1],
+                        ob[0], ob[1]
+                    )
+                    events.append(element)
+
+            for e in events:
+                if e[0] == 1:
+                    rs.AddPoint(e[1])
+                    rs.AddPoint(e[3])
+                else:
+                    rs.AddPoint(e[1])
+                    rs.AddPoint(e[2])
+
+        tolerance = doc.ModelAbsoluteTolerance
+        rs.UnitAbsoluteTolerance(0.1, True)
+
+        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
+            for k2, patch in enumerate(phase):
+                R, X = patch.Edges
+                R.AddRange(X)
+
+                # "self-intersections"
+                for curve in R:
+                    result = Intersect.Intersection.CurveSelf(curve, tolerance)
+                    PlotIntersection(result)
+
+                # "intersection"
+                for curvePair in combinations(R, 2):
+                    a, b = curvePair
+                    result = Intersect.Intersection.CurveCurve(a, b, tolerance, 0.1)
+                    PlotIntersection(result)
+
 
 class SurfaceBuilder(CurveBuilder):
     '''
     Build quadrilateral surfaces.
     See [Example](https://bitbucket.org/snippets/kunst_dev/X894E8)
     '''
-
-    __slots__ = CurveBuilder.__slots__ + [
-        '__points__',
-        'UCount', 'VCount'
-    ]
+    __slots__ = CurveBuilder.__slots__ + ['__points__']
 
     def __init__(self, *args):
         CurveBuilder.__init__(self, *args)
-        # Note: Polysurface created if U and V degrees differ.
-        self.UCount = 0
-        self.VCount = 0
 
     def __listeners__(self):
         listeners = CurveBuilder.__listeners__(self)
@@ -947,26 +1010,25 @@ class SurfaceBuilder(CurveBuilder):
         self.ResetUCount()
         self.ResetVCount()
 
-    def ResetUCount(self, *args):
-        self.UCount = 0
-
-    def ResetVCount(self, *args):
-        self.VCount = 0
-
-    def IncrementVCount(self, *args):
-        self.VCount += 1
-
-    def IncrementUCount(self, *args):
-        self.UCount += 1
-
     def AddSurfaceSubdivision(self, *args):
+        '''
+        Example:
+            Make further U divisions as below:
+            ```
+            xi == self.RngU[self.CentreU]
+            self.Analysis['midU']
+            self.OffsetU(-3.0)
+            self.OffsetU(3.0)
+            ```
+        '''
         k1, k2, a = args
 
-        if self.Analysis['mid90']:  # a == self.RngU[self.CentreU]
-            self.BuildSurface(*args)  # Finalise current subdivision
-            self.AddSurface(*args)  # Begin next subdivision
-            self.__points__ = Point3dList(self.Points[-self.U:])
-            self.IncrementUCount()
+        if self.Analysis['theta == 90']:
+            if self.Analysis['midU']:
+                self.BuildSurface(*args)  # Finalise current subdivision
+                self.AddSurface(*args)  # Begin next subdivision
+                self.__points__ = Point3dList(self.Points[-self.U:])
+                self.IncrementUCount()
 
     def PlotSurface(self, *args):
         k1, k2, a, b = args
@@ -1003,56 +1065,6 @@ class SurfaceBuilder(CurveBuilder):
         '''
         return
         # rs.JoinSurfaces(self.Patch.Surfaces[-2:])
-
-    def Check(self):
-        curveData = []
-        tolerance = doc.ModelAbsoluteTolerance
-        rs.UnitAbsoluteTolerance(0.1, True)
-
-        def results(obj):
-            if obj is None:
-                # print 'Selected curves do not intersect.'
-                return
-
-            for intersection in obj:
-                if intersection[0] == 1:
-                    # print 'Intersection point on first curve: ', intersection[1]
-                    rs.AddPoint(intersection[1])
-                    # print 'Intersection point on second curve: ', intersection[3]
-                    rs.AddPoint(intersection[3])
-                    # print 'First curve parameter: ', intersection[5]
-                    # print 'Second curve parameter: ', intersection[7]
-                else:
-                    # print 'Intersection start point on first curve: ', intersection[1]
-                    rs.AddPoint(intersection[1])
-                    # print 'Intersection end point on first curve: ', intersection[2]
-                    rs.AddPoint(intersection[2])
-                    # print 'Intersection start point on second curve: ', intersection[3]
-                    # print 'Intersection end point on second curve: ', intersection[4]
-                    # print 'First curve parameter range: ', intersection[5], ' to ', intersection[6]
-                    # print 'Second curve parameter range: ', intersection[7], ' to ', intersection[8]
-
-        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
-            for k2, patch in enumerate(phase):
-                _, Edges1, Edges2 = patch.Edges
-                A1, C1, B1, D1 = Edges1
-                A2, C2, B2, D2 = Edges2
-
-                for i in (1, 2):
-                    arr = ('A' + str(i), 'B' + str(i), 'C' + str(i), 'D' + str(i))
-
-                    for e in arr:
-                        curve = eval(e)
-                        doc.Objects.AddCurve(curve)
-                        # result = Intersect.Intersection.CurveCurve(a, b, tolerance, 0.1)
-                        result = rs.CurveCurveIntersection(curve)
-                        results(result)
-
-                    for pair in combinations(arr, 2):
-                        a, b = pair
-                        # result = Intersect.Intersection.CurveCurve(a, b, tolerance, 0.1)
-                        result = rs.CurveCurveIntersection(eval(a), eval(b))
-                        results(result)
 
     def Render(self, *args):
         parent = rs.AddLayer('Surfaces')

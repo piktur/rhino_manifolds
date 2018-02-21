@@ -21,9 +21,13 @@ rs.UnitSystem(13, False, True)  # 13 == 'nanometres'
 # Allow rotation when in Parallel
 ApplicationSettings.ViewSettings.AlwaysPanParallelViews = False
 
+log = file('./log.txt')
+
 if __name__ == '__main__':
     if rs.GetInteger('Export', 0) != 0:
         dir = rs.GetString('Destination', '/Users/daniel/Documents/Design/export')
         Export(CalabiYau.Batch(dir), CalabiYau.Layers, dir)
     else:
         CalabiYau.Run()
+
+log.close()
