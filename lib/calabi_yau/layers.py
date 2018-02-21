@@ -7,47 +7,6 @@ from Rhino.Geometry import Vector3d, Plane, Point3d, Brep, Curve
 from Rhino.Collections import Point3dList, CurveList
 
 
-layers = [
-    'PolySurface',          # `Join` Patches
-    'Intersect::Curves',    # Perform before `Join`. `Intersection` Curves
-    'Intersect::Points',
-    'Border::All',          # `Join` + `DupBorder`
-    'Border::Outer',        # Perform before `Join`. `SelAll` Patches + `DupBorder`
-    'Silhouette',           # `Join` + `Silhouette`. Weird artifacts across surface
-    'Wireframe',            # Set `SurfaceIsocurveDensity` then `Join` + `ExtractWireframe`.
-    'RenderMesh',           # Set `SurfaceIsocurveDensity` then `Join` + `ExtractRenderMesh`.
-    'BoundingBox',
-    'Camera',
-    '2D'                    # Project to 2D plane
-]
-
-
-def Build():
-    Layers()
-    Patches()
-    # SplitAtIntersection()
-    Intersect()
-    Border()
-    # Silhouette()
-    # Wireframe()
-    SetCamera()
-
-    rs.EnableRedraw(True)
-    doc.Views.Redraw()
-
-
-def Layers():
-    for str in ('01', '02', '03', '04', '05'):
-        layer = ' '.join(['Layer', str])
-        if rs.IsLayer(layer):
-            rs.DeleteLayer(layer)
-
-    for layer in layers:
-        if not rs.IsLayer(layer):
-            layer = rs.AddLayer(layer)
-            # rs.LayerVisible(layer, False)
-
-
 def SelectBreps(n=10):
     '''
     rs.ObjectsByType(rs.filter.surface, True)
@@ -63,53 +22,6 @@ def SelectBreps(n=10):
                     arr.append((id, rs.coercebrep(id, True)))
 
     return arr
-
-
-def Patches():
-    # surfaces = rs.ObjectsByType(rs.filter.surface | rs.filter.polysurface, True)
-    # surfaceIds = ','.join(map(lambda e: e.ToString(), surfaces))
-    # Patches = rs.ObjectsByType(rs.filter.surface | rs.filter.polysurface, True)
-
-    patches = []
-
-    for arr in SelectBreps():
-        id, brep = arr
-        patches.append(id)
-
-    patches = rs.CopyObjects(patches)
-
-    tolerance = rs.UnitAbsoluteTolerance()
-    rs.UnitAbsoluteTolerance(0.1, True)
-    srf = rs.JoinSurfaces(patches)  # rs.Command('Join')
-    rs.UnitAbsoluteTolerance(tolerance, True)
-
-    rs.ObjectLayer(srf, 'PolySurface')
-
-
-def BoundingBox():
-    srf = rs.ObjectsByLayer('PolySurface')
-    print srf
-    bx = rs.BoundingBox(srf)
-
-    for i, pt in enumerate(bx):
-        print pt
-        # id = doc.Objects.AddTextDot(str(i), p)
-        id = doc.Objects.AddPoint(pt)
-        rs.ObjectLayer(id, 'BoundingBox')
-
-    return bx
-
-
-def SetCamera():
-    bx = BoundingBox()
-    ln = rs.AddLine(bx[4], bx[2])
-    rs.ObjectLayer(ln, 'Camera')
-    rs.MoveObject(ln, bx[4] - bx[2])
-    ln = rs.coerceline(ln)
-
-    rs.ViewProjection('Perspective', 1)
-    rs.ViewCameraTarget('Perspective', ln.From, ln.To)
-    rs.AddNamedView('Base', 'Perspective')
 
 
 def SplitAtIntersection():
@@ -160,49 +72,6 @@ def ConvertToBeziers():
     # for srf in rs.ObjectsByType(rs.filter.surface, True):
     #     rs.Command('ConvertToBeziers')
     return
-
-
-def Intersect():
-    '''
-    # Equivalent to `rs.Command('Intersect')`
-    surfaces = []
-    for obj in rs.ObjectsByLayer('Surfaces'):
-    surfaces.append(rs.coercebrep(obj))
-
-    for a in surfaces:
-        for b in surfaces:
-            if a != b:
-                rs.IntersectBreps(a, b, doc.ModelAbsoluteTolerance)
-    '''
-    rs.CurrentLayer('Surfaces')
-    rs.ObjectsByType(rs.filter.surface, True)
-    rs.Command('_Intersect')
-
-    for id in rs.ObjectsByType(rs.filter.point):
-        rs.ObjectLayer(id, 'Intersect::Points')
-
-    for id in rs.ObjectsByType(rs.filter.curve):
-        rs.ObjectLayer(id, 'Intersect::Curves')
-
-    rs.LayerLocked('Intersect::Points', True)
-    rs.LayerLocked('Intersect::Curves', True)
-    rs.LayerLocked('Intersect', True)
-
-
-def Border():
-    rs.CurrentLayer('Surfaces')
-    for Srf in rs.ObjectsByType(rs.filter.surface, True):
-        for id in rs.DuplicateSurfaceBorder(Srf, 1):
-            rs.ObjectLayer(id, 'Border::All')
-
-    rs.CurrentLayer('PolySurface')
-    for PolySrf in rs.ObjectsByType(rs.filter.polysurface, True):
-        for id in rs.DuplicateSurfaceBorder(PolySrf, 1):
-            rs.ObjectLayer(id, 'Border::Outer')
-
-    rs.LayerLocked('Border::All', True)
-    rs.LayerLocked('Border::Outer', True)
-    rs.LayerLocked('Border', True)
 
 
 def Silhouette():

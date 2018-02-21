@@ -15,13 +15,11 @@ from Rhino.Collections import Point3dList, CurveList
 import utility
 import export
 from export import fname
-import layers
 from events import EventHandler
 
 
 reload(utility)
 reload(export)
-reload(layers)
 
 
 log = open('./log.txt', 'w')
@@ -83,19 +81,36 @@ def Batch(dir, density=0.1, scale=100, type=4):
 
 
 def Run(*args):
+    '''
+    Parameters:
+        n : int
+        deg : float
+        step : float
+        scale : int
+        offset : int
+        type : int
+            [1] generate Rhino.Geometry.Point
+            [2] generate Rhino.Geometry.Mesh
+            [3] generate Rhino.Geometry.Curve
+            [4] generate Rhino.Geometry.Surface
+    '''
     if rs.ContextIsRhino():  # rs.ContextIsGrasshopper()
         args = GetUserInput()
 
-    # Cache builder instance
-    sticky['builder'] = Builder(*args)
-    sticky['builder'].Build()
+    # n, deg, step, scale, offset, type = args
+    type = args[-1]
 
-    doc.Views.Redraw()
+    if type == 5:
+        pass
+    elif type is None:
+        raise Exception('Builder not specified')
+    else:
+        type = __builders__[type]
 
-
-def Layers():
-    layers.Build()
-    doc.Views.Redraw()
+        # Cache builder instance
+        sticky['builder'] = type(*args[:-1])
+        sticky['builder'].Build()
+        sticky['builder'].Finalize()
 
 
 PointAnalysis = {'Seq': {}}
@@ -266,14 +281,6 @@ class Builder:
 
     Subdivisions ensure geometry comes together at `Patch.Analysis['centre']`
 
-    Parameters:
-        n : int
-        deg : float
-        step : float
-        scale : int
-        offset : int
-        type : int
-
     Attributes:
         n : int
             [1..10]
@@ -308,7 +315,9 @@ class Builder:
         RngV : range
         __builder__ : class
         __palette__ : list<list<System.Drawing.Color>>
-        Analysis: dict
+        Analysis : dict
+        Rendered : dict
+        BoundingBox : list
         Points : list<Rhino.Geometry.Point3d>
         Point : Rhino.Geometry.Point3d
         PointCount : int
@@ -327,19 +336,21 @@ class Builder:
                  'MinV', 'MidV', 'MaxV', 'StepV', 'CentreV',
                  'RngK', 'RngU', 'RngV',
                  'Analysis',
+                 'Rendered',
+                 'BoundingBox',
                  'Points', 'Point', 'PointCount',
                  'Patches', 'Patch', 'PatchCount',
                  '__builder__',
                  '__palette__']
 
-    def __init__(self, n=1, deg=1.0, step=0.1, scale=1, offset=(0, 0), type=4):
+    def __init__(self, n=1, deg=1.0, step=0.1, scale=1, offset=(0, 0)):
         '''
         Parameters:
-            type : int
-                [1] generate Rhino.Geometry.Point
-                [2] generate Rhino.Geometry.Mesh
-                [3] generate Rhino.Geometry.Curve
-                [4] generate Rhino.Geometry.Surface
+            n : int
+            deg : float
+            step : float
+            scale : int
+            offset : int
         '''
         self.n = n
         self.Alpha = deg * pi
@@ -394,14 +405,7 @@ class Builder:
         self.Analysis['g'] = Genus(self.n)
         self.Analysis['chi'] = EulerCharacteristic(self.n)
 
-        if type == 5:
-            # TODO
-            # self.__builder__ = __builders__
-            pass
-        elif type is None:
-            raise Exception('Builder not specified')
-        else:
-            self.__builder__ = __builders__[type]
+        self.Rendered = {}
 
         # Setup Events registry
         self.Events = EventHandler()
@@ -438,10 +442,7 @@ class Builder:
 
         Add Rhino objects to document
         '''
-        builder = self.__builder__(self.n, self.Alpha / pi, self.Step, self.Scale, self.Offset)
-
-        if hasattr(self.__builder__, '__listeners__') and callable(self.__builder__.__listeners__):
-            self.Events.register(builder.__listeners__())
+        self.Events.register(self.__listeners__())
 
         for k1 in self.RngK:
             self.Events.publish('k1.on', k1)
@@ -466,7 +467,10 @@ class Builder:
 
             self.Events.publish('k1.out', k1)
 
-        builder.Render(self)
+        self.Render()
+
+    def Finalize(self):
+        return
 
     def PointAnalysis(self, *args):
         '''
@@ -689,6 +693,37 @@ class Builder:
 
         return ids
 
+    def AddLayers(self):
+        layers = [
+            'Points',
+            'Meshes',
+            'Curves',
+            'Surfaces',
+            'PolySurface',
+            'Intersect::Curves',
+            'Intersect::Points',
+            'Border::All',
+            'Border::Outer',
+            # 'Silhouette',
+            'Wireframe',
+            # 'RenderMesh',
+            'BoundingBox',
+            'Camera',
+            '2D'
+        ]
+
+        for str in ('01', '02', '03', '04', '05'):
+            layer = ' '.join(['Layer', str])
+            if rs.IsLayer(layer):
+                rs.DeleteLayer(layer)
+
+        for layer in layers:
+            if not rs.IsLayer(layer):
+                layer = rs.AddLayer(layer)
+                rs.LayerPrintColor(layer, Color.Black)
+                rs.LayerPrintWidth(layer, 0.4)  # mm
+                # rs.LayerVisible(layer, False)
+
     def Surfaces(self):
         return map(lambda e: e.Surfaces, self.Patches)
 
@@ -798,7 +833,10 @@ class MeshBuilder(Builder):
 
 class CurveBuilder(Builder):
     __slots__ = Builder.__slots__ + [
-        'Edges',
+        'Curves',
+        'CurveCombinations',
+        'R', 'X',
+        'Outer',
         'R0', 'R1', 'R2',
         'X0', 'X1',
         'X2', 'X3',
@@ -809,6 +847,12 @@ class CurveBuilder(Builder):
 
     def __init__(self, *args):
         Builder.__init__(self, *args)
+
+        self.Curves = CurveList()
+        self.CurveCombinations = None
+        self.R = CurveList()
+        self.X = CurveList()
+        self.Outer = CurveList()
 
         # "rails"
         for char in list(string.digits)[:3]:
@@ -824,6 +868,15 @@ class CurveBuilder(Builder):
         listeners['k2.out'].append(self.BuildEdges)
 
         return listeners
+
+    def CombineCurves(self):
+        '''
+        Returns unique curve pairs as enumerable itertools.combinations
+        '''
+        if self.CurveCombinations is None:
+            self.CurveCombinations = combinations(self.Curves, 2)
+
+        return self.CurveCombinations
 
     def AddEdges(self, *args):
         for char in list(string.digits)[:3]:
@@ -877,23 +930,37 @@ class CurveBuilder(Builder):
         X = CurveList()
 
         # "rails"
-        for points in (self.R0, self.R1, self.R2):
-            R.Add(Builder.BuildInterpolatedCurve(points, self.Degree))
+        for i, points in enumerate((self.R0, self.R1, self.R2)):
+            curve = Builder.BuildInterpolatedCurve(points, self.Degree)
+            for collection in (R, self.R, self.Curves):
+                collection.Add(curve)
+            if i != 1:
+                self.Outer.Add(curve)
 
         # "cross-sections"
-        for points in (self.X0, self.X1, self.X2, self.X3, self.X4, self.X5, self.X6, self.X7, self.X8, self.X9):
-            X.Add(Builder.BuildInterpolatedCurve(points, self.Degree))
+        for i, points in enumerate((
+            self.X0, self.X1,
+            self.X2, self.X3,
+            self.X4, self.X5,
+            self.X6, self.X7,
+            self.X8, self.X9
+        )):
+            curve = Builder.BuildInterpolatedCurve(points, self.Degree)
+            for collection in (X, self.X, self.Curves):
+                collection.Add(curve)
 
-        self.Patch.Edges = [R, X]
+        self.Patch.Edges = (R, X)
 
     def Render(self, *args):
         def cb(curve, layer):
             id = doc.Objects.AddCurve(curve)
             self.__rendered__(id)
             rs.ObjectLayer(id, layer)
+            self.Rendered['Curves'].append(id)
 
             # Builder.FindCurveCentre(curve, '[' + str(k1) + ',' + str(k2) + ']')
 
+        self.Rendered['Curves'] = []
         group = rs.AddLayer('Curves')
 
         for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
@@ -909,10 +976,12 @@ class CurveBuilder(Builder):
                 layer = rs.AddLayer('::'.join([parent, str(k2)]), colour)
 
                 for char in list(string.digits)[:3]:
-                    cb(eval('R' + char), layer)
+                    curve = eval('R' + char)
+                    cb(curve, layer)
 
                 for char in list(string.digits)[:9]:
-                    cb(eval('X' + char), layer)
+                    curve = eval('X' + char)
+                    cb(curve, layer)
 
                 # for edgeGroup in (Edges1, Edges2):
                 #     # Create Boundary Representation
@@ -931,65 +1000,24 @@ class CurveBuilder(Builder):
                 #     id = doc.Objects.AddSurface(surface)
                 #     self.__rendered__(id)
 
-    def Check(self):
-        def PlotIntersection(obj):
-            if obj is None:
-                # print 'Selected curves do not intersect.'
-                return
-            else:
-                events = []
-                for i in xrange(obj.Count):
-                    event_type = 1
-                    if (obj[i].IsOverlap):
-                        event_type = 2
-                    oa = obj[i].OverlapA
-                    ob = obj[i].OverlapB
-                    element = (
-                        event_type,
-                        obj[i].PointA, obj[i].PointA2,
-                        obj[i].PointB, obj[i].PointB2,
-                        oa[0], oa[1],
-                        ob[0], ob[1]
-                    )
-                    events.append(element)
-
-            for e in events:
-                if e[0] == 1:
-                    rs.AddPoint(e[1])
-                    rs.AddPoint(e[3])
-                else:
-                    rs.AddPoint(e[1])
-                    rs.AddPoint(e[2])
-
-        tolerance = doc.ModelAbsoluteTolerance
-        rs.UnitAbsoluteTolerance(0.1, True)
-
-        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
-            for k2, patch in enumerate(phase):
-                R, X = patch.Edges
-                R.AddRange(X)
-
-                # "self-intersections"
-                for curve in R:
-                    result = Intersect.Intersection.CurveSelf(curve, tolerance)
-                    PlotIntersection(result)
-
-                # "intersection"
-                for curvePair in combinations(R, 2):
-                    a, b = curvePair
-                    result = Intersect.Intersection.CurveCurve(a, b, tolerance, 0.1)
-                    PlotIntersection(result)
-
 
 class SurfaceBuilder(CurveBuilder):
     '''
     Build quadrilateral surfaces.
     See [Example](https://bitbucket.org/snippets/kunst_dev/X894E8)
     '''
-    __slots__ = CurveBuilder.__slots__ + ['__points__']
+    __slots__ = CurveBuilder.__slots__ + [
+        '__points__',
+        'Surfaces',
+        'SurfaceCombinations',
+        'PolySurface'
+    ]
 
     def __init__(self, *args):
         CurveBuilder.__init__(self, *args)
+        self.Surfaces = []
+        self.SurfaceCombinations = None
+        self.PolySurface = None
 
     def __listeners__(self):
         listeners = CurveBuilder.__listeners__(self)
@@ -1004,6 +1032,15 @@ class SurfaceBuilder(CurveBuilder):
         listeners['k2.out'].extend([self.BuildSurface, self.JoinSurfaces])
 
         return listeners
+
+    def CombineSurfaces(self):
+        '''
+        Returns unique surface pairs as enumerable itertools.combinations
+        '''
+        if self.SurfaceCombinations is None:
+            self.SurfaceCombinations = combinations(self.Surfaces, 2)
+
+        return self.SurfaceCombinations
 
     def AddSurface(self, *args):
         self.__points__ = Point3dList()
@@ -1048,7 +1085,7 @@ class SurfaceBuilder(CurveBuilder):
                     surface.Points.SetControlPoint(0, self.V / 2, cp)
         ```
         '''
-        surface = NurbsSurface.CreateFromPoints(
+        srf = NurbsSurface.CreateFromPoints(
             self.__points__,
             self.UCount,
             self.VCount,
@@ -1056,7 +1093,8 @@ class SurfaceBuilder(CurveBuilder):
             self.VDegree
         )
 
-        self.Patch.Surfaces.append(surface)
+        self.Surfaces.append(srf)
+        self.Patch.Surfaces.append(srf)
 
     def JoinSurfaces(self, *args):
         '''
@@ -1067,18 +1105,195 @@ class SurfaceBuilder(CurveBuilder):
         # rs.JoinSurfaces(self.Patch.Surfaces[-2:])
 
     def Render(self, *args):
-        parent = rs.AddLayer('Surfaces')
-
-        self.Check()
-
         def cb(phase, patch, layer, ids):
             for i, surface in enumerate(patch.Surfaces):
                 id = doc.Objects.AddSurface(surface)
                 self.__rendered__(id)
                 ids.append(id)
                 rs.ObjectLayer(id, layer)
+                self.Rendered['Surfaces'].append(id)
+
+        parent = rs.AddLayer('Surfaces')
+        self.Rendered['Surfaces'] = []
 
         Builder.Render(self, cb, parent, *args)
+
+    def BuildPolySurface(self):
+        # tolerance = rs.UnitAbsoluteTolerance()
+        # rs.UnitAbsoluteTolerance(0.1, True)
+        tolerance = 0.1 * 2.1  # doc.ModelAbsoluteTolerance
+
+        # srf = rs.JoinSurfaces(self.Rendered)
+        breps = []
+        for id in self.Rendered['Surfaces']:
+            breps.append(rs.coercebrep(id))
+
+        result = Brep.JoinBreps(breps, tolerance)
+        for srf in result:
+            id = doc.Objects.AddBrep(srf)
+            self.__rendered__(id)
+            rs.ObjectLayer(id, 'PolySurface')
+
+        # rs.UnitAbsoluteTolerance(tolerance, True)  # restore tolerance
+
+        self.PolySurface, = result
+        return result
+
+    def IntersectCurves(self):
+        '''
+        # Find intersections
+        # Then draw a curve between points over the surface
+        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
+            for k2, patch in enumerate(phase):
+
+                for srf in patch.Surfaces:
+                    rs.AddInterpCrvOnSrf(srf, points):
+        '''
+        def HandleIntersectionEvents(obj):
+            if obj is None:
+                return
+            else:
+                events = []
+                for i in xrange(obj.Count):
+                    event_type = 1
+                    if (obj[i].IsOverlap):
+                        event_type = 2
+                    oa = obj[i].OverlapA
+                    ob = obj[i].OverlapB
+                    events.append((
+                        event_type,
+                        obj[i].PointA, obj[i].PointA2,
+                        obj[i].PointB, obj[i].PointB2,
+                        oa[0], oa[1],
+                        ob[0], ob[1]
+                    ))
+
+            for e in events:
+                if e[0] == 1:
+                    for point in e[1:5]:
+                        id = doc.Objects.AddPoint(point)
+                        self.__rendered__(id)
+                        rs.ObjectLayer(id, 'Intersect::Points')
+                else:  # IsOverlap
+                    pass
+                    # rs.AddPoint(e[1])
+                    # rs.AddPoint(e[2])
+
+            return events
+
+        tolerance = doc.ModelAbsoluteTolerance
+        rs.UnitAbsoluteTolerance(0.1, True)
+
+        # "self-intersections"
+        for curve in self.Curves:
+            result = Intersect.Intersection.CurveSelf(curve, 0.1)
+            HandleIntersectionEvents(result)
+
+        # "intersection"
+        for combination in self.CurveCombinations:
+            a, b = combination
+            result = Intersect.Intersection.CurveCurve(a, b, 0.1, 1.0)
+            HandleIntersectionEvents(result)
+
+        rs.UnitAbsoluteTolerance(tolerance, True)  # restore tolerance
+
+    def IntersectSurfaces(self):
+        tolerance = doc.ModelAbsoluteTolerance
+
+        Curves = CurveList()
+        Points = Point3dList()
+
+        for combination in self.SurfaceCombinations:
+            a, b = combination
+            print a.Id.ToString()
+
+            # rs.coercebrep(a)
+            # result, curves, points = Intersect.Intersection.BrepBrep(a, b, tolerance)
+            #
+            # for point in points:
+            #     Points.Add(point)
+            #     id = doc.Objects.AddPoint(point)
+            #     self.__rendered__(id)
+            #     rs.ObjectLayer(id, 'Intersect::Points')
+            #
+            # for curve in curves:
+            #     Curves.Add(curve)
+            #     id = doc.Objects.AddCurve(curve)
+            #     self.__rendered__(id)
+            #     rs.ObjectLayer(id, 'Intersect::Curves')
+
+        return Curves, Points
+
+    def SplitAtIntersection(self):
+        return
+        # breps = a.Split(b, tolerance)
+        #
+        # if len(breps) > 0:
+        #     rhobj = rs.coercerhinoobject(a, True)
+        #     if rhobj:
+        #         attr = rhobj.Attributes if rs.ContextIsRhino() else None
+        #         result = []
+        #
+        #         for i in range(len(breps)):
+        #             if i == 0:
+        #                 doc.Objects.Replace(rhobj.Id, breps[i])
+        #                 result.append(rhobj.Id)
+        #             else:
+        #                 result.append(doc.Objects.AddBrep(breps[i], attr))
+        #     else:
+        #         result = [doc.Objects.AddBrep(brep) for brep in breps]
+
+    def BuildBorders(self):
+        # for curve in self.Curves:
+        #     id = doc.Objects.AddCurve(curve)
+        #     self.__rendered__(id)
+        #     rs.ObjectLayer(curve, 'Border::All')
+
+        for curve in self.Outer:
+            id = doc.Objects.AddCurve(curve)
+            self.__rendered__(id)
+            rs.ObjectLayer(id, 'Border::Outer')
+
+    def BuildBoundingBox(self):
+        self.BoundingBox = rs.BoundingBox(self.PolySurface)
+
+        for i, pt in enumerate(self.BoundingBox):
+            # id = doc.Objects.AddTextDot(str(i), p)
+            id = doc.Objects.AddPoint(pt)
+            rs.ObjectLayer(id, 'BoundingBox')
+
+        return self.BoundingBox
+
+    def SetAxonometricCameraProjection(self):  # Isometric
+        bx = self.BoundingBox
+        ln = rs.AddLine(bx[4], bx[2])
+        rs.ObjectLayer(ln, 'Camera')
+        rs.MoveObject(ln, bx[4] - bx[2])
+        ln = rs.coerceline(ln)
+
+        rs.ViewProjection('Perspective', 1)
+        rs.ViewCameraTarget('Perspective', ln.From, ln.To)
+        rs.ZoomBoundingBox(bx, all=True)
+        rs.AddNamedView('Base', 'Perspective')
+
+    def Finalize(self):
+        self.AddLayers()
+        self.CombineCurves()
+        self.CombineSurfaces()
+        self.BuildPolySurface()
+        self.BuildBorders()
+        self.IntersectCurves()
+        Curves, Points = self.IntersectSurfaces()
+        # self.SplitAtIntersection()
+
+        self.BuildBoundingBox()
+        self.SetAxonometricCameraProjection()
+
+        for layer in ('Camera', 'BoundingBox'):
+            rs.LayerVisible(layer, False)
+            rs.LayerLocked(layer, True)
+
+        doc.Views.Redraw()
 
 
 __builders__ = {
