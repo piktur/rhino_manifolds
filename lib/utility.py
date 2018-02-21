@@ -1,6 +1,7 @@
 from System.Drawing import Color
 from scriptcontext import doc
 import rhinoscriptsyntax as rs
+import json
 
 
 def Halt():
@@ -9,6 +10,37 @@ def Halt():
     '''
     if rs.GetBoolean('Proceed',  ('Proceed?', 'No', 'Yes'), (True)) is None:
         return None
+
+
+def ExportNamedViews():
+    log = open('./views.json', 'a')
+    fname = rs.DocumentPath() + rs.DocumentName()
+    data = {}
+    data[fname] = {}
+
+    for view in rs.NamedViews():
+        rs.RestoreNamedView(view)
+        data[fname][view] = (
+            list(rs.ViewCamera()),
+            list(rs.ViewTarget())
+        )
+
+    log.write(json.dumps(data, indent=2) + '\n')
+    log.close()
+
+    return data
+
+
+def ImportNamedViews():
+    # TODO
+    log = open('./views.json', 'a')
+    data = json.loads(log)
+
+    for fname in data.iterkeys():
+        for view in data[fname].iterkeys():
+            camera, target = data[fname][view]
+            rs.AddNamedView(view)
+            rs.ViewCameraTarget(view, camera, target)
 
 
 def Palette():
