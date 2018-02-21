@@ -9,6 +9,9 @@ from export import Export
 
 reload(CalabiYau)
 
+# Disable Autosave to prevent filesharing conflicts
+rs.EnableAutosave(False)
+
 rs.EnableRedraw(True)
 
 # Configure measurement unit and tolerances

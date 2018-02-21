@@ -10,7 +10,7 @@ from scriptcontext import doc, sticky
 # from rhinoscriptsyntax import GetBoolean, GetInteger,
 #   GetReal, AddObjectsToGroup, AddGroup, frange
 import rhinoscriptsyntax as rs
-from Rhino.Geometry import Brep, ControlPoint, Curve, CurveKnotStyle, Mesh, NurbsCurve, NurbsSurface, Point3d, Vector3d, Intersect
+from Rhino.Geometry import Brep, BrepFace, ControlPoint, Curve, CurveKnotStyle, Mesh, NurbsCurve, NurbsSurface, Point3d, Vector3d, Intersect
 from Rhino.Collections import Point3dList, CurveList
 import utility
 import export
@@ -1205,22 +1205,22 @@ class SurfaceBuilder(CurveBuilder):
 
         for combination in self.SurfaceCombinations:
             a, b = combination
-            print a.Id.ToString()
+            a = Brep.TryConvertBrep(a)
+            b = Brep.TryConvertBrep(b)
 
-            # rs.coercebrep(a)
-            # result, curves, points = Intersect.Intersection.BrepBrep(a, b, tolerance)
-            #
-            # for point in points:
-            #     Points.Add(point)
-            #     id = doc.Objects.AddPoint(point)
-            #     self.__rendered__(id)
-            #     rs.ObjectLayer(id, 'Intersect::Points')
-            #
-            # for curve in curves:
-            #     Curves.Add(curve)
-            #     id = doc.Objects.AddCurve(curve)
-            #     self.__rendered__(id)
-            #     rs.ObjectLayer(id, 'Intersect::Curves')
+            result, curves, points = Intersect.Intersection.BrepBrep(a, b, tolerance)
+
+            for point in points:
+                Points.Add(point)
+                id = doc.Objects.AddPoint(point)
+                self.__rendered__(id)
+                rs.ObjectLayer(id, 'Intersect::Points')
+
+            for curve in curves:
+                Curves.Add(curve)
+                id = doc.Objects.AddCurve(curve)
+                self.__rendered__(id)
+                rs.ObjectLayer(id, 'Intersect::Curves')
 
         return Curves, Points
 
@@ -1249,7 +1249,7 @@ class SurfaceBuilder(CurveBuilder):
         #     self.__rendered__(id)
         #     rs.ObjectLayer(curve, 'Border::All')
 
-        for curve in self.Outer:
+        for curve in Curve.JoinCurves(self.Outer):
             id = doc.Objects.AddCurve(curve)
             self.__rendered__(id)
             rs.ObjectLayer(id, 'Border::Outer')
@@ -1276,15 +1276,117 @@ class SurfaceBuilder(CurveBuilder):
         rs.ZoomBoundingBox(bx, all=True)
         rs.AddNamedView('Base', 'Perspective')
 
+    def DivideCurves(self):
+        # TODO
+        #   * Join U
+        #   * Join V
+        #   * Find intersections
+        #   * CrvThrough intersection pts
+        def ExtractIsoCurve(srf, parameter, direction=0):
+            def render(curves, layer):
+                for curve in curves:
+                    id = doc.Objects.AddCurve(curve)
+                    self.__rendered__(id)
+                    rs.ObjectLayer(id, layer)
+
+            isBrep = type(srf) is BrepFace
+            U = []
+            V = []
+            if direction in (0, 2):  # "U" or "both"
+                if isBrep:
+                    U.extend(srf.TrimAwareIsoCurve(0, parameter[1]))
+                else:
+                    U.append(srf.IsoCurve(0, parameter[1]))
+                render(U, 'Wireframe::U')
+
+            if direction in (1, 2):  # "V" or "both"
+                if isBrep:
+                    V.extend(srf.TrimAwareIsoCurve(1, parameter[0]))
+                else:
+                    V.append(srf.IsoCurve(1, parameter[0]))
+                render(V, 'Wireframe::V')
+
+            return U, V
+
+        rs.AddLayer('Wireframe::Outer')
+        rs.AddLayer('Wireframe::U')
+        rs.AddLayer('Wireframe::U::Divisions')
+        rs.AddLayer('Wireframe::U::Divisions::EqiUnjoined')
+        rs.AddLayer('Wireframe::U::Divisions::Eqi')
+        rs.AddLayer('Wireframe::U::Divisions::Count')
+        rs.AddLayer('Wireframe::U::Divisions::Length')
+        rs.AddLayer('Wireframe::V')
+        rs.AddLayer('Wireframe::V::Divisions')
+
+        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
+            for k2, patch in enumerate(phase):
+                R, X = patch.Edges
+                R0, R1, R2 = R
+                X0, X1, X2, X3, X4, X5, X6, X7, X8, X9 = X
+
+                # points = R0.DivideEquidistant(5)
+                # divisions = R0.DivideByLength(5, True)
+                divisions = R0.DivideByCount(self.n * 10, True)
+                points = [R0.PointAt(t) for t in divisions]
+                srf = patch.Surfaces[1]
+                next = []
+                for point in points:
+                    parameter = rs.SurfaceClosestPoint(srf, point)
+                    U, V = ExtractIsoCurve(srf, parameter, 0)
+                    for curve in U:
+                        # start = curve.PointAtStart
+                        # end = curve.PointAtEnd
+                        next.append(curve.PointAtStart)
+
+                srf = patch.Surfaces[0]
+                for point in next:
+                    parameter = rs.SurfaceClosestPoint(srf, point)
+                    U, V = ExtractIsoCurve(srf, parameter, 0)
+
+        # srf = self.Surfaces[-1]
+        #
+        # for curve in self.Outer:
+        #     points = curve.DivideEquidistant(5)
+        #     for point in points:
+        #         id = doc.Objects.AddPoint(point)
+        #         self.__rendered__(id)
+        #         rs.ObjectLayer(id, 'Wireframe::U::Divisions::EqiUnjoined')
+        #
+        # # When using the joined outer curves the intervals are consistent but curves no longer come together at xi == 0, theta == 0
+        # for curve in Curve.JoinCurves(self.Outer):
+        #     points = curve.DivideEquidistant(5)
+        #     for point in points:
+        #         id = doc.Objects.AddPoint(point)
+        #         self.__rendered__(id)
+        #         rs.ObjectLayer(id, 'Wireframe::U::Divisions::Eqi')
+        #
+        # for curve in Curve.JoinCurves(self.Outer):
+        #     result = curve.DivideByCount(self.n * 10, True)
+        #     points = [curve.PointAt(t) for t in result]
+        #     for point in points:
+        #         id = doc.Objects.AddPoint(point)
+        #         self.__rendered__(id)
+        #         rs.ObjectLayer(id, 'Wireframe::U::Divisions::Count')
+        #
+        # for curve in Curve.JoinCurves(self.Outer):
+        #     result = curve.DivideByLength(5, True)
+        #     points = [curve.PointAt(t) for t in result]
+        #     for point in points:
+        #         id = doc.Objects.AddPoint(point)
+        #         self.__rendered__(id)
+        #         rs.ObjectLayer(id, 'Wireframe::U::Divisions::Length')
+
     def Finalize(self):
         self.AddLayers()
         self.CombineCurves()
         self.CombineSurfaces()
         self.BuildPolySurface()
         self.BuildBorders()
-        self.IntersectCurves()
-        Curves, Points = self.IntersectSurfaces()
+        # self.IntersectCurves()
+        # Curves, Points = self.IntersectSurfaces()
         # self.SplitAtIntersection()
+
+        self.DivideCurves()
 
         self.BuildBoundingBox()
         self.SetAxonometricCameraProjection()
@@ -1294,7 +1396,6 @@ class SurfaceBuilder(CurveBuilder):
             rs.LayerLocked(layer, True)
 
         doc.Views.Redraw()
-
 
 __builders__ = {
     1: PointCloudBuilder,
