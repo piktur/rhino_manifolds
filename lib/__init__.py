@@ -22,9 +22,9 @@ rs.EnableRedraw(True)
 # Min     | 0.0000000001 | 0.0001   | 0.0001
 # Default | 0.001        | 1.0      | 1.0
 #
-rs.UnitAbsoluteTolerance(0.001, True)
-rs.UnitRelativeTolerance(1.0, True)
-rs.UnitAngleTolerance(1.0, True)
+rs.UnitAbsoluteTolerance(0.0000001, True)
+rs.UnitRelativeTolerance(0.0001, True)
+rs.UnitAngleTolerance(0.0001, True)
 rs.UnitSystem(13, False, True)  # 13 == 'nanometres'
 
 # Allow rotation when in Parallel

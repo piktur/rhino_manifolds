@@ -29,6 +29,41 @@ Copy `./Libraries` Grasshopper plugins to
 * Split breps
 * Extract IsoCurves
 * Add calabi_yau/layers.py methods to calabi_yau/__init__.py
+
+Extract Wireframe
+Select All U
+Intersect Curves
+
+Select All V
+Intersect Curves
+
+Geometry seems to be corrupt
+Impossible to Split with surface through wireframe Intersection points
+
+Rebuild with higher density isocurves
+ExtractIsocurve through the intersection points
+
+Split along this isocurve
+Can't rebuild as it still has the same UV info
+
+So DupBorder
+NetworkSrf High density
+Then Intersect
+
+
+Maybe we just need to lower tolerance
+Find Intersection of A and C or B and D curves
+  if intersection:
+    with other curve set
+    find mid point
+    plot point
+    create a new division
+
+MergeSrf
+Divide Curves by some interval
+ExtractIsoCurve with Point snaps
+Work around each surface
+
 ---
 
 A Quintic complex Fermat Surface (power n = 5) is known to provide 10-dimensional String Theory with the 6D Einstein manifold needed for the missing dimensions of Spactime!

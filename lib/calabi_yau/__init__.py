@@ -110,7 +110,7 @@ def Run(*args):
         # Cache builder instance
         sticky['builder'] = type(*args[:-1])
         sticky['builder'].Build()
-        sticky['builder'].Finalize()
+        # sticky['builder'].Finalize()
 
 
 PointAnalysis = {'Seq': {}}
@@ -360,7 +360,7 @@ class Builder:
 
         # Floating point precision.
         # Increase when self.U and/or self.V increases
-        self.ndigits = 6
+        self.ndigits = 5
 
         # NOTE `U` -- "xi" must be odd to guarantee passage through fixed points at
         # (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0)
@@ -402,8 +402,18 @@ class Builder:
         self.__palette__ = utility.Palette()
 
         self.Analysis = PointAnalysis
-        self.Analysis['g'] = Genus(self.n)
-        self.Analysis['chi'] = EulerCharacteristic(self.n)
+        self.Analysis.update({
+            '15': round(pi / 12, self.ndigits),
+            '30': round(pi / 6, self.ndigits),
+            '45': round(pi / 4, self.ndigits),
+            '60': round(pi / 3, self.ndigits),
+            '75': round(pi / 2.4, self.ndigits),
+            '90': round(pi / 2, self.ndigits),
+            'midU': round(self.MidU, self.ndigits),
+            'midV': round(self.MidV, self.ndigits),
+            'g': Genus(self.n),
+            'chi': EulerCharacteristic(self.n)
+        })
 
         self.Rendered = {}
 
@@ -494,64 +504,68 @@ class Builder:
 
         # Intervals through self.RngU
         xi = _['xi'] = _['U'] = round(xi, d)
-        _['minU'] = xi == self.MinU  # -1
-        _['<midU'] = xi < round(self.MidU, d)
-        _['<=midU'] = xi <= round(self.MidU, d)
-        _['midU'] = xi == round(self.MidU, d)
-        _['>midU'] = xi > round(self.MidU, d)
-        _['>=midU'] = xi >= round(self.MidU, d)
-        _['maxU'] = xi == self.MaxU  # 1
+        _['xi == minU'] = xi == self.MinU  # -1
+        _['xi < midU'] = xi < _['midU']
+        _['xi <= midU'] = xi <= _['midU']
+        _['xi == midU'] = xi == _['midU']
+        _['xi >= midU'] = xi >= _['midU']
+        _['xi > midU'] = xi > _['midU']
+        _['xi == maxU'] = xi == self.MaxU  # 1
 
         # Intervals through self.RngV
         theta = _['theta'] = _['V'] = round(theta, d)
         _['theta == 0'] = theta == float(0)  # self.MinV
-        _['theta == 15'] = theta == round(pi / 12, d)
-        _['theta == 30'] = theta == round(pi / 6, d)
-        _['<midV'] = theta < round(self.MidV, d)
-        _['<=midV'] = theta <= round(self.MidV, d)
-        _['midV'] = _['theta == 45'] = theta == round(self.MidV, d)  # pi / 4
-        _['>midV'] = theta > round(self.MidV, d)
-        _['>=midV'] = theta >= round(self.MidV, d)
-        _['theta == 60'] = theta == round(pi / 3, d)
-        _['theta == 75'] = theta == round(pi / 2.4, d)
-        _['theta == 90'] = theta == round(pi / 2, d)  # self.MaxV
+        _['theta == 15'] = theta == _['15']
+        _['theta <= 30'] = theta <= _['30']
+        _['theta == 30'] = theta == _['30']
+        _['theta >= 30'] = theta >= _['30']
+        _['theta < 45'] = theta < _['45']
+        _['theta <= 45'] = theta <= _['45']
+        _['theta == 45'] = theta == _['45']
+        _['theta >= 45'] = theta >= _['45']
+        _['theta > 45'] = theta > _['45']
+        _['theta <= 60'] = theta <= _['60']
+        _['theta == 60'] = theta == _['60']
+        _['theta >= 60'] = theta >= _['60']
+        _['theta == 75'] = theta == _['75']
+        _['theta <= 90'] = theta <= _['90']
+        _['theta == 90'] = theta == _['90']  # self.MaxV
 
         # The junction of n patches is a fixed point of a complex phase transformation.
-        # The n curves converging at this fixed point emphasize the dimension of the surface.
-        # Point of convergence "hyperbolic pie chart"
-        _['min0'] = _['minU'] and _['theta == 0']
-        # _['mid0'] = _['z1 == 0'] or _['z2 == 0'] and _['midU']
-        _['centre'] = _['mid0'] = _['midU'] and _['theta == 0']
-        _['max0'] = _['maxU'] and _['theta == 0']
+        # The n curves converging at this fixed point emphasize the dimensions of the surface.
+        # _['min0'] = _['xi == minU'] and _['theta == 0']
+        # # _['mid0'] = _['z1 == 0'] or _['z2 == 0'] and _['xi == midU']
+        # _['mid0'] = _['xi == midU'] and _['theta == 0']
+        # _['max0'] = _['xi == maxU'] and _['theta == 0']
+        #
+        # _['min45'] = _['xi == minU'] and _['theta == 45']
+        # _['mid45'] = _['xi == midU'] and _['theta == 45']
+        # _['max45'] = _['xi == maxU'] and _['theta == 45']
+        #
+        # _['min90'] = _['xi == minU'] and _['theta == 90']
+        # _['mid90'] = _['xi == midU'] and _['theta == 90']
+        # _['max90'] = _['xi == maxU'] and _['theta == 90']
 
-        _['min45'] = _['minU'] and _['theta == 45']
-        _['mid45'] = _['midU'] and _['theta == 45']
-        _['max45'] = _['maxU'] and _['theta == 45']
-
-        _['min90'] = _['minU'] and _['theta == 90']
-        _['mid90'] = _['midU'] and _['theta == 90']
-        _['max90'] = _['maxU'] and _['theta == 90']
-
-        if _['min0'] is True:
-            self.Patch.Analysis['min0'] = self.Point
-        elif _['mid0'] is True:
-            self.Patch.Analysis['centre'] = self.Patch.Analysis['mid0'] = self.Point
-        elif _['max0'] is True:
-            self.Patch.Analysis['max0'] = self.Point
-
-        elif _['min45'] is True:
-            self.Patch.Analysis['min45'] = self.Point
-        elif _['mid45'] is True:
-            self.Patch.Analysis['mid45'] = self.Point
-        elif _['max45'] is True:
-            self.Patch.Analysis['max45'] = self.Point
-
-        elif _['min90'] is True:
-            self.Patch.Analysis['min90'] = self.Point
-        elif _['mid90'] is True:
-            self.Patch.Analysis['mid90'] = self.Point
-        elif _['max90'] is True:
-            self.Patch.Analysis['max90'] = self.Point
+        # if _['min0'] is True:
+        #     self.Patch.Analysis['min0'] = self.Point
+        # elif _['mid0'] is True:
+        #     self.Patch.Analysis['centre'] = self.Patch.Analysis['mid0'] = self.Point
+        # elif _['max0'] is True:
+        #     self.Patch.Analysis['max0'] = self.Point
+        #
+        # elif _['min45'] is True:
+        #     self.Patch.Analysis['min45'] = self.Point
+        # elif _['mid45'] is True:
+        #     self.Patch.Analysis['mid45'] = self.Point
+        # elif _['max45'] is True:
+        #     self.Patch.Analysis['max45'] = self.Point
+        #
+        # elif _['min90'] is True:
+        #     self.Patch.Analysis['min90'] = self.Point
+        # elif _['mid90'] is True:
+        #     self.Patch.Analysis['mid90'] = self.Point
+        # elif _['max90'] is True:
+        #     self.Patch.Analysis['max90'] = self.Point
 
         return _
 
@@ -806,7 +820,7 @@ class MeshBuilder(Builder):
         k1, k2, a, b = args
 
         if a > self.MinU and b > self.MinV:
-            if self.Analysis['<=midU']:
+            if self.Analysis['xi <= midU']:
                 self.MeshA = Mesh()
                 self.BuildFaces(self.MeshA, *args)
                 self.Patch.MeshA.Append(self.MeshA)
@@ -832,18 +846,19 @@ class MeshBuilder(Builder):
 
 
 class CurveBuilder(Builder):
+    RDiv = []
+    XDiv = []
+    for char in list(string.digits)[:3]:
+        RDiv.append('R' + char)
+    for char in list(string.digits)[:10]:
+        XDiv.append('X' + char)
+
     __slots__ = Builder.__slots__ + [
         'Curves',
         'CurveCombinations',
         'R', 'X',
-        'Outer',
-        'R0', 'R1', 'R2',
-        'X0', 'X1',
-        'X2', 'X3',
-        'X4', 'X5',
-        'X6', 'X7',
-        'X8', 'X9'
-    ]
+        'Outer'
+    ] + RDiv + XDiv
 
     def __init__(self, *args):
         Builder.__init__(self, *args)
@@ -855,11 +870,11 @@ class CurveBuilder(Builder):
         self.Outer = CurveList()
 
         # "rails"
-        for char in list(string.digits)[:3]:
-            setattr(self, 'R' + char, [])
+        for div in RDiv:
+            setattr(self, div, [])
         # "cross-sections"
-        for char in list(string.digits)[:10]:
-            setattr(self, 'X' + char, [])
+        for div in XDiv:
+            setattr(self, div, [])
 
     def __listeners__(self):
         listeners = Builder.__listeners__(self)
@@ -879,10 +894,10 @@ class CurveBuilder(Builder):
         return self.CurveCombinations
 
     def AddEdges(self, *args):
-        for char in list(string.digits)[:3]:
-            setattr(self, 'R' + char, Point3dList())
-        for char in list(string.digits)[:9]:
-            setattr(self, 'X' + char, Point3dList())
+        for div in RDiv:
+            setattr(self, div, Point3dList())
+        for div in XDiv:
+            setattr(self, div, Point3dList())
 
     def PlotEdges(self, *args):
         '''
@@ -891,38 +906,38 @@ class CurveBuilder(Builder):
         k1, k2, a, b = args
 
         # "rails"
-        if self.Analysis['minU']:
+        if self.Analysis['xi == minU']:
             self.R2.Add(self.Point)
-        elif self.Analysis['midU']:
+        elif self.Analysis['xi == midU']:
             self.R1.Add(self.Point)
-        elif self.Analysis['maxU']:
+        elif self.Analysis['xi == maxU']:
             self.R0.Add(self.Point)
 
         # "cross-sections"
         if self.Analysis['theta == 0']:
-            if self.Analysis['<=midU']:
+            if self.Analysis['xi <= midU']:
                 self.X9.Add(self.Point)
-            if self.Analysis['>=midU']:
+            if self.Analysis['xi >= midU']:
                 self.X8.Add(self.Point)
         elif self.Analysis['theta == 30']:
-            if self.Analysis['<=midU']:
+            if self.Analysis['xi <= midU']:
                 self.X7.Add(self.Point)
-            if self.Analysis['>=midU']:
+            if self.Analysis['xi >= midU']:
                 self.X6.Add(self.Point)
         elif self.Analysis['theta == 45']:
-            if self.Analysis['<=midU']:
+            if self.Analysis['xi <= midU']:
                 self.X5.Add(self.Point)
-            if self.Analysis['>=midU']:
+            if self.Analysis['xi >= midU']:
                 self.X4.Add(self.Point)
         elif self.Analysis['theta == 60']:
-            if self.Analysis['<=midU']:
+            if self.Analysis['xi <= midU']:
                 self.X3.Add(self.Point)
-            if self.Analysis['>=midU']:
+            if self.Analysis['xi >= midU']:
                 self.X2.Add(self.Point)
         elif self.Analysis['theta == 90']:
-            if self.Analysis['<=midU']:
+            if self.Analysis['xi <= midU']:
                 self.X1.Add(self.Point)
-            if self.Analysis['>=midU']:
+            if self.Analysis['xi >= midU']:
                 self.X0.Add(self.Point)
 
     def BuildEdges(self, *args):
@@ -930,7 +945,7 @@ class CurveBuilder(Builder):
         X = CurveList()
 
         # "rails"
-        for i, points in enumerate((self.R0, self.R1, self.R2)):
+        for i, points in enumerate(map(lambda div: getattr(self, div), RDiv)):
             curve = Builder.BuildInterpolatedCurve(points, self.Degree)
             for collection in (R, self.R, self.Curves):
                 collection.Add(curve)
@@ -938,13 +953,7 @@ class CurveBuilder(Builder):
                 self.Outer.Add(curve)
 
         # "cross-sections"
-        for i, points in enumerate((
-            self.X0, self.X1,
-            self.X2, self.X3,
-            self.X4, self.X5,
-            self.X6, self.X7,
-            self.X8, self.X9
-        )):
+        for i, points in enumerate(map(lambda div: getattr(self, div), XDiv)):
             curve = Builder.BuildInterpolatedCurve(points, self.Degree)
             for collection in (X, self.X, self.Curves):
                 collection.Add(curve)
@@ -975,12 +984,12 @@ class CurveBuilder(Builder):
                 colour = self.Colour(self.n, k1, k2)
                 layer = rs.AddLayer('::'.join([parent, str(k2)]), colour)
 
-                for char in list(string.digits)[:3]:
-                    curve = eval('R' + char)
+                for div in RDiv:
+                    curve = eval(div)
                     cb(curve, layer)
 
-                for char in list(string.digits)[:9]:
-                    curve = eval('X' + char)
+                for div in XDiv:
+                    curve = eval(div)
                     cb(curve, layer)
 
                 # for edgeGroup in (Edges1, Edges2):
@@ -1006,29 +1015,33 @@ class SurfaceBuilder(CurveBuilder):
     Build quadrilateral surfaces.
     See [Example](https://bitbucket.org/snippets/kunst_dev/X894E8)
     '''
+    Div = []
+    UDiv = []
+    VDiv = []
+    for i in range(0, 2, 1):
+        for char in range(0, 90 + 15, 15):
+            Div.append('S' + str(char) + '_' + str(i))
+            UDiv.append('U' + str(char) + '_' + str(i))
+            VDiv.append('V' + str(char) + '_' + str(i))
+
     __slots__ = CurveBuilder.__slots__ + [
         '__points__',
         'Surfaces',
         'SurfaceCombinations',
         'PolySurface'
-    ]
+    ] + Div + UDiv + VDiv
 
     def __init__(self, *args):
         CurveBuilder.__init__(self, *args)
+
         self.Surfaces = []
         self.SurfaceCombinations = None
         self.PolySurface = None
 
     def __listeners__(self):
         listeners = CurveBuilder.__listeners__(self)
-        listeners['k2.on'].append(self.AddSurface)
-        listeners['a.on'].append(self.ResetVCount)
+        listeners['k2.on'].append(self.AddSurfaces)
         listeners['b.in'].append(self.PlotSurface)
-        listeners['b.out'].append(self.IncrementVCount)
-        listeners['a.out'].extend([
-            self.IncrementUCount,
-            self.AddSurfaceSubdivision
-        ])
         listeners['k2.out'].extend([self.BuildSurface, self.JoinSurfaces])
 
         return listeners
@@ -1042,10 +1055,13 @@ class SurfaceBuilder(CurveBuilder):
 
         return self.SurfaceCombinations
 
-    def AddSurface(self, *args):
-        self.__points__ = Point3dList()
-        self.ResetUCount()
-        self.ResetVCount()
+    def AddSurfaces(self, *args):
+        for div in Div:
+            setattr(self, div, Point3dList())
+        for div in UDiv:
+            setattr(self, div, 0)
+        for div in VDiv:
+            setattr(self, div, 0)
 
     def AddSurfaceSubdivision(self, *args):
         '''
@@ -1058,23 +1074,68 @@ class SurfaceBuilder(CurveBuilder):
             self.OffsetU(3.0)
             ```
         '''
-        k1, k2, a = args
+        k1, k2, a, b = args
 
         if self.Analysis['theta == 90']:
             if self.Analysis['midU']:
                 self.BuildSurface(*args)  # Finalise current subdivision
                 self.AddSurface(*args)  # Begin next subdivision
-                self.__points__ = Point3dList(self.Points[-self.U:])
+                self.__points__ = Point3dList(self.Points[-28:])
                 self.IncrementUCount()
 
     def PlotSurface(self, *args):
         k1, k2, a, b = args
 
-        self.__points__.Add(self.Point)
+        if self.Analysis['theta <= 30']:
+            if self.Analysis['xi == minU']:
+                self.V0_0 += 1
+            elif self.Analysis['xi == midU']:
+                self.V0_1 += 1
+
+            if self.Analysis['xi <= midU']:
+                self.S0_0.Add(self.Point)
+            if self.Analysis['xi >= midU']:
+                self.S0_1.Add(self.Point)
+
+        if self.Analysis['theta >= 30'] and self.Analysis['theta <= 45']:
+            if self.Analysis['xi == minU']:
+                self.V30_0 += 1
+            elif self.Analysis['xi == midU']:
+                self.V30_1 += 1
+
+            if self.Analysis['xi <= midU']:
+                self.S30_0.Add(self.Point)
+            if self.Analysis['xi >= midU']:
+                self.S30_1.Add(self.Point)
+
+        if self.Analysis['theta >= 45'] and self.Analysis['theta <= 60']:
+            if self.Analysis['xi == minU']:
+                self.V45_0 += 1
+            elif self.Analysis['xi == midU']:
+                self.V45_1 += 1
+
+            if self.Analysis['xi <= midU']:
+                self.S45_0.Add(self.Point)
+            if self.Analysis['xi >= midU']:
+                self.S45_1.Add(self.Point)
+
+        if self.Analysis['theta >= 60'] and self.Analysis['theta <= 90']:
+            if self.Analysis['xi == minU']:
+                self.V60_0 += 1
+            elif self.Analysis['xi == midU']:
+                self.V60_1 += 1
+
+            if self.Analysis['xi <= midU']:
+                self.S60_0.Add(self.Point)
+            if self.Analysis['xi >= midU']:
+                self.S60_1.Add(self.Point)
 
     def BuildSurface(self, *args):
         '''
         TODO Add `Weight` to `self.Patch.Analysis['centre']` control point
+
+        NurbsSurface.CreateFromPoints will raise "Invalid U and V counts" if
+        `Point3dList != self.UCount * self.VCount`
 
         ```
             cp = surface.Points.GetControlPoint(0, self.V / 2)
@@ -1085,16 +1146,22 @@ class SurfaceBuilder(CurveBuilder):
                     surface.Points.SetControlPoint(0, self.V / 2, cp)
         ```
         '''
-        srf = NurbsSurface.CreateFromPoints(
-            self.__points__,
-            self.UCount,
-            self.VCount,
-            self.UDegree,
-            self.VDegree
-        )
+        UCount = round(self.U / 2.0)
 
-        self.Surfaces.append(srf)
-        self.Patch.Surfaces.append(srf)
+        for i in range(0, 2, 1):
+            for char in range(0, 90 + 15, 15):
+                points = getattr(self, 'S' + str(char) + '_' + str(i))
+                if points.Count > 0:
+                    srf = NurbsSurface.CreateFromPoints(
+                        points,
+                        UCount,
+                        getattr(self, 'V' + str(char) + '_' + str(i)),
+                        self.UDegree,
+                        self.VDegree
+                    )
+
+                    self.Surfaces.append(srf)
+                    self.Patch.Surfaces.append(srf)
 
     def JoinSurfaces(self, *args):
         '''
@@ -1117,13 +1184,11 @@ class SurfaceBuilder(CurveBuilder):
         self.Rendered['Surfaces'] = []
 
         Builder.Render(self, cb, parent, *args)
+        CurveBuilder.Render(self, *args)
 
     def BuildPolySurface(self):
-        # tolerance = rs.UnitAbsoluteTolerance()
-        # rs.UnitAbsoluteTolerance(0.1, True)
-        tolerance = 0.1 * 2.1  # doc.ModelAbsoluteTolerance
+        tolerance = 0.1
 
-        # srf = rs.JoinSurfaces(self.Rendered)
         breps = []
         for id in self.Rendered['Surfaces']:
             breps.append(rs.coercebrep(id))
@@ -1133,8 +1198,6 @@ class SurfaceBuilder(CurveBuilder):
             id = doc.Objects.AddBrep(srf)
             self.__rendered__(id)
             rs.ObjectLayer(id, 'PolySurface')
-
-        # rs.UnitAbsoluteTolerance(tolerance, True)  # restore tolerance
 
         self.PolySurface, = result
         return result
@@ -1225,7 +1288,7 @@ class SurfaceBuilder(CurveBuilder):
         return Curves, Points
 
     def SplitAtIntersection(self):
-        return
+        pass
         # breps = a.Split(b, tolerance)
         #
         # if len(breps) > 0:
@@ -1277,104 +1340,13 @@ class SurfaceBuilder(CurveBuilder):
         rs.AddNamedView('Base', 'Perspective')
 
     def DivideCurves(self):
+        pass
         # TODO
         #   * Join U
         #   * Join V
         #   * Find intersections
         #   * CrvThrough intersection pts
-        def ExtractIsoCurve(srf, parameter, direction=0):
-            def render(curves, layer):
-                for curve in curves:
-                    id = doc.Objects.AddCurve(curve)
-                    self.__rendered__(id)
-                    rs.ObjectLayer(id, layer)
-
-            isBrep = type(srf) is BrepFace
-            U = []
-            V = []
-            if direction in (0, 2):  # "U" or "both"
-                if isBrep:
-                    U.extend(srf.TrimAwareIsoCurve(0, parameter[1]))
-                else:
-                    U.append(srf.IsoCurve(0, parameter[1]))
-                render(U, 'Wireframe::U')
-
-            if direction in (1, 2):  # "V" or "both"
-                if isBrep:
-                    V.extend(srf.TrimAwareIsoCurve(1, parameter[0]))
-                else:
-                    V.append(srf.IsoCurve(1, parameter[0]))
-                render(V, 'Wireframe::V')
-
-            return U, V
-
-        rs.AddLayer('Wireframe::Outer')
-        rs.AddLayer('Wireframe::U')
-        rs.AddLayer('Wireframe::U::Divisions')
-        rs.AddLayer('Wireframe::U::Divisions::EqiUnjoined')
-        rs.AddLayer('Wireframe::U::Divisions::Eqi')
-        rs.AddLayer('Wireframe::U::Divisions::Count')
-        rs.AddLayer('Wireframe::U::Divisions::Length')
-        rs.AddLayer('Wireframe::V')
-        rs.AddLayer('Wireframe::V::Divisions')
-
-        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
-            for k2, patch in enumerate(phase):
-                R, X = patch.Edges
-                R0, R1, R2 = R
-                X0, X1, X2, X3, X4, X5, X6, X7, X8, X9 = X
-
-                # points = R0.DivideEquidistant(5)
-                # divisions = R0.DivideByLength(5, True)
-                divisions = R0.DivideByCount(self.n * 10, True)
-                points = [R0.PointAt(t) for t in divisions]
-                srf = patch.Surfaces[1]
-                next = []
-                for point in points:
-                    parameter = rs.SurfaceClosestPoint(srf, point)
-                    U, V = ExtractIsoCurve(srf, parameter, 0)
-                    for curve in U:
-                        # start = curve.PointAtStart
-                        # end = curve.PointAtEnd
-                        next.append(curve.PointAtStart)
-
-                srf = patch.Surfaces[0]
-                for point in next:
-                    parameter = rs.SurfaceClosestPoint(srf, point)
-                    U, V = ExtractIsoCurve(srf, parameter, 0)
-
-        # srf = self.Surfaces[-1]
-        #
-        # for curve in self.Outer:
-        #     points = curve.DivideEquidistant(5)
-        #     for point in points:
-        #         id = doc.Objects.AddPoint(point)
-        #         self.__rendered__(id)
-        #         rs.ObjectLayer(id, 'Wireframe::U::Divisions::EqiUnjoined')
-        #
-        # # When using the joined outer curves the intervals are consistent but curves no longer come together at xi == 0, theta == 0
-        # for curve in Curve.JoinCurves(self.Outer):
-        #     points = curve.DivideEquidistant(5)
-        #     for point in points:
-        #         id = doc.Objects.AddPoint(point)
-        #         self.__rendered__(id)
-        #         rs.ObjectLayer(id, 'Wireframe::U::Divisions::Eqi')
-        #
-        # for curve in Curve.JoinCurves(self.Outer):
-        #     result = curve.DivideByCount(self.n * 10, True)
-        #     points = [curve.PointAt(t) for t in result]
-        #     for point in points:
-        #         id = doc.Objects.AddPoint(point)
-        #         self.__rendered__(id)
-        #         rs.ObjectLayer(id, 'Wireframe::U::Divisions::Count')
-        #
-        # for curve in Curve.JoinCurves(self.Outer):
-        #     result = curve.DivideByLength(5, True)
-        #     points = [curve.PointAt(t) for t in result]
-        #     for point in points:
-        #         id = doc.Objects.AddPoint(point)
-        #         self.__rendered__(id)
-        #         rs.ObjectLayer(id, 'Wireframe::U::Divisions::Length')
+        #   * Split surfaces at self intersection
 
     def Finalize(self):
         self.AddLayers()
@@ -1386,7 +1358,7 @@ class SurfaceBuilder(CurveBuilder):
         # Curves, Points = self.IntersectSurfaces()
         # self.SplitAtIntersection()
 
-        self.DivideCurves()
+        # self.DivideCurves()
 
         self.BuildBoundingBox()
         self.SetAxonometricCameraProjection()
@@ -1396,6 +1368,7 @@ class SurfaceBuilder(CurveBuilder):
             rs.LayerLocked(layer, True)
 
         doc.Views.Redraw()
+
 
 __builders__ = {
     1: PointCloudBuilder,
