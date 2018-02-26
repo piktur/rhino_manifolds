@@ -203,3 +203,38 @@ Rhino application files are accessible from: `/Applications/RhinoWIP.app/Content
 * [#2] Decompile Assembly
 
 [1]:https://pdfs.semanticscholar.org/a51f/16741a6452effe2c3773577484fc88948f40.pdf
+
+Rhino
+1. SelectAll
+2. Export Selected .ai
+3. Set Scale 1 * UnitSystem == 1mm
+
+4. Open Exported File
+5. New from Template `A4_4Div.ait` `Applications/Adobe Illustrator CC 2017/Cool Extras/en_GB/Templates`
+6. Copy linework to template
+7. SelectAll
+8. Group
+9. Resize and place within artboards
+
+File > Document Setup
+Edit Artboards if necessary (Template should already provide adequate artboards)
+A4 210 * 297
+A4 210 * 210 [Square]
+A4 148.25 * 210
+A4 105 * 105 [Square]
+
+Export to `.psd`
+Flat image: True
+Resolution: 300ppi
+Color Model: Grayscale or CMYK
+AntiAlias: Art Optimised
+
+Why:
+  * Transparent background
+  * Rasterized at correct scale
+  * Layers:
+    * IsoCurves
+    * Rails
+    * Silhouette
+
+Object > Rasterize

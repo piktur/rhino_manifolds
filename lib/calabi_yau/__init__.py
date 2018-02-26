@@ -262,9 +262,10 @@ class Patch:
         self.Phase = phase
         self.Analysis = {}
         self.Points = Point3dList()
-        self.Surfaces = []
-        self.Breps = []
-        self.IsoCurves = {'V': CurveList(), 'U': CurveList()}
+        self.Surfaces = {'Div1': [], 'Div2': []}
+        self.Breps = {'Div1': [], 'Div2': []}
+        self.PointGrid = {'Div1': [], 'Div2': []}
+        self.IsoCurves = {'U': CurveList(), 'V': CurveList()}
         # self.Edges = []
         # self.Brep = None
 
@@ -412,15 +413,20 @@ class Builder:
             '60': round(pi / 3, self.ndigits),
             '75': round(pi / 2.4, self.ndigits),
             '90': round(pi / 2, self.ndigits),
-            'U/2': round(self.U / 2.0),
-            'V/2': round(self.V / 2.0),
+            'U/2': int(round(self.U / 2.0)),
+            'V/2': int(round(self.V / 2.0)),
             'midU': round(self.MidU, self.ndigits),
             'midV': round(self.MidV, self.ndigits),
             'g': Genus(self.n),
             'chi': EulerCharacteristic(self.n)
         })
 
-        self.Rendered = {}
+        self.Rendered = {
+            'Curves': [],
+            'Surfaces': {'Div1': [], 'Div2': []},
+            'Meshes': {},
+            'Points': {}
+        }
 
         # Setup Events registry
         self.Events = EventHandler()
@@ -627,6 +633,17 @@ class Builder:
 
         return self.Point
 
+    def ClosestPoint(self, srf, point, maxDistance=0.1):
+        '''
+        If maximumDistance > 0, then only points whose distance is
+        <= maximumDistance will be returned.
+        http://developer.rhino3d.com/api/RhinoCommon/html/M_Rhino_Geometry_Brep_ClosestPoint_1.htm
+        '''
+        brep = Brep.TryConvertBrep(srf)
+        _ = brep.ClosestPoint(point, maxDistance)
+
+        return _[0], (_[3], _[4])
+
     @staticmethod
     def BuildInterpolatedCurve(points, degree=3):
         '''
@@ -724,12 +741,11 @@ class Builder:
             'Border::All',
             'Border::Outer',
             # 'Silhouette',
-            'Wireframe',
-            'Wireframe::Outer',
-            'Wireframe::U',
-            'Wireframe::U::Divisions',
-            'Wireframe::V',
-            'Wireframe::V::Divisions',
+            'IsoCurves',
+            'IsoCurves::U',
+            'IsoCurves::V',
+            'IsoCurves::U::Divisions',
+            'IsoCurves::V::Divisions',
             # 'RenderMesh',
             'BoundingBox',
             'Camera',
@@ -747,18 +763,6 @@ class Builder:
                 rs.LayerPrintColor(layer, Color.Black)
                 rs.LayerPrintWidth(layer, 0.4)  # mm
                 # rs.LayerVisible(layer, False)
-
-    def Surfaces(self):
-        return map(lambda e: e.Surfaces, self.Patches)
-
-    def Breps(self):
-        return map(lambda e: e.Brep, self.Patches)
-
-    def Edges(self):
-        return map(lambda e: e.Edges, self.Patches)
-
-    def Meshes(self):
-        return [self.MeshA, self.MeshB]
 
 
 class PointCloudBuilder(Builder):
@@ -984,6 +988,11 @@ class CurveBuilder(Builder):
                 self.X0.Add(self.Point)
 
     def PlotIsoCurves(self, *args):
+        '''
+        TODO
+            * Recalculate point with more or less divisions of `a` and `b` to
+            control density.
+        '''
         # k1, k2, a, b = args
 
         for direction in ('U', 'V'):
@@ -1013,10 +1022,10 @@ class CurveBuilder(Builder):
 
                 if direction == 'V':  # Ensure sharp kink
                     points = list(points)
-                    division = int(self.Analysis['V/2'] - 1)
+                    div = int(self.Analysis['V/2'] - 1)
                     curves.extend([
-                        Builder.BuildInterpolatedCurve(points[0:-division], self.Degree),
-                        Builder.BuildInterpolatedCurve(points[division:], self.Degree)
+                        Builder.BuildInterpolatedCurve(points[0:-div], self.Degree),
+                        Builder.BuildInterpolatedCurve(points[div:], self.Degree)
                     ])
                 else:
                     curves.append(
@@ -1038,24 +1047,17 @@ class CurveBuilder(Builder):
 
             # Builder.FindCurveCentre(curve, '[' + str(k1) + ',' + str(k2) + ']')
 
-        self.Rendered['Curves'] = []
-        group = rs.AddLayer('Curves')
-
-        for direction in ('U', 'V'):
-            layer = rs.AddLayer('::'.join(['IsoCurves', direction]), Color.Purple)
-
-            for curve in self.IsoCurves[direction]:
-                id = doc.Objects.AddCurve(curve)
-                self.__rendered__(id)
-                rs.ObjectLayer(id, layer)
-
-            # for curve in Curve.JoinCurves(self.IsoCurves[direction]):
-            #     id = doc.Objects.AddCurve(curve)
-            #     self.__rendered__(id)
-            #     rs.ObjectLayer(id, layer)
+        # for e in ('U', 'V'):
+        #     layer = rs.AddLayer('::'.join(['IsoCurves', e]), Color.Purple)
+        #
+        #     # for curve in self.IsoCurves[e]:
+        #     for curve in Curve.JoinCurves(self.IsoCurves[e]):
+        #         id = doc.Objects.AddCurve(curve)
+        #         self.__rendered__(id)
+        #         rs.ObjectLayer(id, layer)
 
         for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
-            parent = rs.AddLayer('::'.join([group, str(k1)]))
+            parent = rs.AddLayer('::'.join(['Curves', str(k1)]))
 
             for k2, patch in enumerate(phase):
                 R, X = patch.Edges
@@ -1095,6 +1097,64 @@ class CurveBuilder(Builder):
                 #     id = doc.Objects.AddSurface(surface)
                 #     self.__rendered__(id)
 
+    def IntersectCurves(self):
+        '''
+        # Find intersections
+        # Then draw a curve between points over the surface
+        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
+            for k2, patch in enumerate(phase):
+
+                for srf in patch.Surfaces['Div2']:
+                    rs.AddInterpCrvOnSrf(srf, points):
+        '''
+        def HandleIntersectionEvents(obj):
+            if obj is None:
+                return
+            else:
+                events = []
+                for i in xrange(obj.Count):
+                    event_type = 1
+                    if (obj[i].IsOverlap):
+                        event_type = 2
+                    oa = obj[i].OverlapA
+                    ob = obj[i].OverlapB
+                    events.append((
+                        event_type,
+                        obj[i].PointA, obj[i].PointA2,
+                        obj[i].PointB, obj[i].PointB2,
+                        oa[0], oa[1],
+                        ob[0], ob[1]
+                    ))
+
+            for e in events:
+                if e[0] == 1:
+                    for point in e[1:5]:
+                        id = doc.Objects.AddPoint(point)
+                        self.__rendered__(id)
+                        rs.ObjectLayer(id, 'Intersect::Points')
+                else:  # IsOverlap
+                    pass
+                    # rs.AddPoint(e[1])
+                    # rs.AddPoint(e[2])
+
+            return events
+
+        tolerance = doc.ModelAbsoluteTolerance
+        rs.UnitAbsoluteTolerance(0.1, True)
+
+        # "self-intersections"
+        for curve in self.Curves:
+            result = Intersect.Intersection.CurveSelf(curve, 0.1)
+            HandleIntersectionEvents(result)
+
+        # "intersection"
+        for combination in self.CurveCombinations:
+            a, b = combination
+            result = Intersect.Intersection.CurveCurve(a, b, 0.1, 1.0)
+            HandleIntersectionEvents(result)
+
+        rs.UnitAbsoluteTolerance(tolerance, True)  # restore tolerance
+
 
 class SurfaceBuilder(CurveBuilder):
     '''
@@ -1132,22 +1192,25 @@ class SurfaceBuilder(CurveBuilder):
         '__points__',
         'Surfaces',
         'Breps',
+        'PointGrid',
         'SurfaceCombinations',
         'BrepCombinations',
         'PolySurface',
         'Div',
         'UDiv',
-        'VDiv'
+        'VDiv',
+        'A', 'B'
     ] + Div.__func__() + UDiv.__func__() + VDiv.__func__()
 
     def __init__(self, *args):
         CurveBuilder.__init__(self, *args)
 
-        self.Surfaces = []
-        self.Breps = []
-        self.SurfaceCombinations = None
-        self.BrepCombinations = None
-        self.PolySurface = None
+        self.Surfaces = {'Div1': [], 'Div2': []}
+        self.Breps = {'Div1': [], 'Div2': []}
+        self.PointGrid = {'Div1': [], 'Div2': []}
+        self.SurfaceCombinations = {'Div1': None, 'Div2': None}
+        self.BrepCombinations = {'Div1': None, 'Div2': None}
+        self.PolySurface = {'Div1': None, 'Div2': None}
         self.Div = SurfaceBuilder.Div()
         self.UDiv = SurfaceBuilder.UDiv()
         self.VDiv = SurfaceBuilder.VDiv()
@@ -1164,8 +1227,9 @@ class SurfaceBuilder(CurveBuilder):
         '''
         Returns unique Surface pairs as enumerable itertools.combinations
         '''
-        if self.SurfaceCombinations is None:
-            self.SurfaceCombinations = combinations(self.Surfaces, 2)
+        for e in ('Div1', 'Div2'):
+            if self.SurfaceCombinations[e] is None:
+                self.SurfaceCombinations[e] = combinations(self.Surfaces[e], 2)
 
         return self.SurfaceCombinations
 
@@ -1173,8 +1237,9 @@ class SurfaceBuilder(CurveBuilder):
         '''
         Returns unique Brep pairs as enumerable itertools.combinations
         '''
-        if self.BrepCombinations is None:
-            self.BrepCombinations = combinations(self.Breps, 2)
+        for e in ('Div1', 'Div2'):
+            if self.BrepCombinations[e] is None:
+                self.BrepCombinations[e] = combinations(self.Breps[e], 2)
 
         return self.BrepCombinations
 
@@ -1185,6 +1250,8 @@ class SurfaceBuilder(CurveBuilder):
             setattr(self, div, 0)
         for div in self.VDiv:
             setattr(self, div, 0)
+        for div in ('A', 'B'):
+            setattr(self, div, Point3dList())
 
     def AddSurfaceSubdivision(self, *args):
         '''
@@ -1203,11 +1270,16 @@ class SurfaceBuilder(CurveBuilder):
             if self.Analysis['midU']:
                 self.BuildSurface(*args)  # Finalise current subdivision
                 self.AddSurface(*args)  # Begin next subdivision
-                self.__points__ = Point3dList(self.Points[-28:])
+                self.__points__ = Point3dList(self.Points[-self.Analysis['U/2']:])
                 self.IncrementUCount()
 
     def PlotSurface(self, *args):
         k1, k2, a, b = args
+
+        if self.Analysis['xi <= midU']:
+            self.A.Add(self.Point)
+        if self.Analysis['xi >= midU']:
+            self.B.Add(self.Point)
 
         if self.Analysis['theta <= 30']:
             if self.Analysis['xi == minU']:
@@ -1261,32 +1333,74 @@ class SurfaceBuilder(CurveBuilder):
         `Point3dList != self.UCount * self.VCount`
 
         ```
-            cp = surface.Points.GetControlPoint(0, self.V / 2)
+            cp = srf.Points.GetControlPoint(0, self.Analysis['V/2'])
             cp.Weight = 1000
-            for point in surface.Points:
-                if point.X == 0 or point.Y == 0:
-                    cp = ControlPoint(point.X, point.Y, point.Z, 1000)
-                    surface.Points.SetControlPoint(0, self.V / 2, cp)
         ```
         '''
+        def cache(srf, key):
+            self.Surfaces[key].append(srf)
+            self.Patch.Surfaces[key].append(srf)
+
+            brep = Brep.TryConvertBrep(srf)
+            self.Breps[key].append(brep)
+            self.Patch.Breps[key].append(brep)
+
+        def PointGrid(points, UCount, VCount):
+            count = len(points)
+
+            U = [[] for n in range(VCount)]
+            V = []  # [] for n in range(UCount)
+
+            for n in range(0, count, VCount):
+                arr = points.GetRange(n, VCount)
+                V.append(arr)
+
+            for n in range(VCount):
+                for arr in V:
+                    U[n].append(arr[n])
+
+            return U, V
+
+        for char in ('A', 'B'):
+            points = getattr(self, char)
+
+            if points.Count > 0:
+                UCount = self.Analysis['U/2']
+                VCount = self.V
+
+                for e in zip(('U', 'V'), PointGrid(points, UCount, VCount)):
+                    self.PointGrid['Div1'].append({e[0]: e[1]})
+
+                srf = NurbsSurface.CreateFromPoints(
+                    points,
+                    UCount,
+                    VCount,
+                    self.UDegree,
+                    self.VDegree
+                )
+
+                cache(srf, 'Div1')
+
         for i in range(0, 2, 1):
             for char in range(0, 90 + 15, 15):
                 points = getattr(self, 'S' + str(char) + '_' + str(i))
+
                 if points.Count > 0:
+                    UCount = self.Analysis['U/2']
+                    VCount = getattr(self, 'V' + str(char) + '_' + str(i))
+
+                    for e in zip(('U', 'V'), PointGrid(points, UCount, VCount)):
+                        self.PointGrid['Div2'].append({e[0]: e[1]})
+
                     srf = NurbsSurface.CreateFromPoints(
                         points,
-                        self.Analysis['U/2'],
-                        getattr(self, 'V' + str(char) + '_' + str(i)),
+                        UCount,
+                        VCount,
                         self.UDegree,
                         self.VDegree
                     )
 
-                    self.Surfaces.append(srf)
-                    self.Patch.Surfaces.append(srf)
-
-                    brep = Brep.TryConvertBrep(srf)
-                    self.Breps.append(brep)
-                    self.Patch.Breps.append(brep)
+                    cache(srf, 'Div2')
 
     def JoinSurfaces(self, *args):
         '''
@@ -1297,27 +1411,56 @@ class SurfaceBuilder(CurveBuilder):
 
         tolerance = 0.1
 
-        result = Brep.JoinBreps(self.Patch.Breps, tolerance)
-        # for srf in result:
-        #     id = doc.Objects.AddBrep(srf)
-        #     self.__rendered__(id)
-        #     rs.ObjectLayer(id, 'PolySurface')
+        for i, e in enumerate(('Div1', 'Div2')):
+            result = Brep.JoinBreps(self.Patch.Breps[e], tolerance)
+            # for srf in result:
+            #     id = doc.Objects.AddBrep(srf)
+            #     self.__rendered__(id)
+            #     rs.ObjectLayer(id, 'PolySurface')
 
         return result
 
     def Render(self, *args):
         def cb(phase, patch, layer, ids):
-            for i, surface in enumerate(patch.Surfaces):
-                id = doc.Objects.AddSurface(surface)
-                self.__rendered__(id)
-                ids.append(id)
-                rs.ObjectLayer(id, layer)
-                self.Rendered['Surfaces'].append(id)
+            colour = rs.LayerColor(layer)
 
-        parent = rs.AddLayer('Surfaces')
-        self.Rendered['Surfaces'] = []
+            for i, e in enumerate(('Div1', 'Div2')):
+                subLayer = rs.AddLayer('::'.join([layer, str(i)]), colour)
+                count = len(patch.Surfaces[e])
+                mid = int(round(count / 2.0))
+                OuterU = []
 
-        Builder.Render(self, cb, parent, *args)
+                for i, srf in enumerate(patch.Surfaces[e]):
+                    grid = patch.PointGrid[e][i]
+                    for point in grid['V'][0]:
+                        # rs.AddPoint(point)
+                        result, parameter = self.ClosestPoint(srf, point, 0.1)
+                        if result:
+                            U, V = self.ExtractIsoCurve(srf, parameter, 0)
+
+                    # if i < mid:
+                    #     points = []
+                    #
+                    #     for point in grid['U'][0]:
+                    #         # rs.AddPoint(point)
+                    #         result, parameter = self.ClosestPoint(srf, point, 0.1)
+                    #         if result:
+                    #             U, V = self.ExtractIsoCurve(srf, parameter, 1)
+                    #             for curve in U:
+                    #                 points.append(curve.PointAtStart)
+                    #         OuterU.append(points)
+                    # else:
+                    #     for point in OuterU[i - mid]:
+                    #         parameter = rs.SurfaceClosestPoint(srf, point)
+                    #         self.ExtractIsoCurve(srf, parameter, 0)
+
+                    id = doc.Objects.AddSurface(srf)
+                    self.__rendered__(id)
+                    ids.append(id)
+                    rs.ObjectLayer(id, subLayer)
+                    self.Rendered['Surfaces'][e].append(id)
+
+        Builder.Render(self, cb, 'Surfaces', *args)
         CurveBuilder.Render(self, *args)
 
     def Finalize(self):
@@ -1347,72 +1490,18 @@ class SurfaceBuilder(CurveBuilder):
     def BuildPolySurface(self):
         tolerance = 0.1
 
-        result = Brep.JoinBreps(self.Breps, tolerance)
-        for srf in result:
-            id = doc.Objects.AddBrep(srf)
-            self.__rendered__(id)
-            rs.ObjectLayer(id, 'PolySurface')
+        for i, e in enumerate(('Div1', 'Div2')):
+            layer = rs.AddLayer('::'.join(['PolySurface', str(i)]))
+            result = Brep.JoinBreps(self.Breps[e], tolerance)
 
-        self.PolySurface, = result
-        return result
+            for srf in result:
+                id = doc.Objects.AddBrep(srf)
+                self.__rendered__(id)
+                rs.ObjectLayer(id, layer)
 
-    def IntersectCurves(self):
-        '''
-        # Find intersections
-        # Then draw a curve between points over the surface
-        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
-            for k2, patch in enumerate(phase):
+            self.PolySurface[e], = result
 
-                for srf in patch.Surfaces:
-                    rs.AddInterpCrvOnSrf(srf, points):
-        '''
-        def HandleIntersectionEvents(obj):
-            if obj is None:
-                return
-            else:
-                events = []
-                for i in xrange(obj.Count):
-                    event_type = 1
-                    if (obj[i].IsOverlap):
-                        event_type = 2
-                    oa = obj[i].OverlapA
-                    ob = obj[i].OverlapB
-                    events.append((
-                        event_type,
-                        obj[i].PointA, obj[i].PointA2,
-                        obj[i].PointB, obj[i].PointB2,
-                        oa[0], oa[1],
-                        ob[0], ob[1]
-                    ))
-
-            for e in events:
-                if e[0] == 1:
-                    for point in e[1:5]:
-                        id = doc.Objects.AddPoint(point)
-                        self.__rendered__(id)
-                        rs.ObjectLayer(id, 'Intersect::Points')
-                else:  # IsOverlap
-                    pass
-                    # rs.AddPoint(e[1])
-                    # rs.AddPoint(e[2])
-
-            return events
-
-        tolerance = doc.ModelAbsoluteTolerance
-        rs.UnitAbsoluteTolerance(0.1, True)
-
-        # "self-intersections"
-        for curve in self.Curves:
-            result = Intersect.Intersection.CurveSelf(curve, 0.1)
-            HandleIntersectionEvents(result)
-
-        # "intersection"
-        for combination in self.CurveCombinations:
-            a, b = combination
-            result = Intersect.Intersection.CurveCurve(a, b, 0.1, 1.0)
-            HandleIntersectionEvents(result)
-
-        rs.UnitAbsoluteTolerance(tolerance, True)  # restore tolerance
+        return self.PolySurface
 
     def IntersectSurfaces(self):
         tolerance = doc.ModelAbsoluteTolerance
@@ -1420,7 +1509,7 @@ class SurfaceBuilder(CurveBuilder):
         Curves = CurveList()
         Points = Point3dList()
 
-        for combination in self.BrepCombinations:
+        for combination in self.BrepCombinations['Div2']:
             a, b = combination
 
             result, curves, points = Intersect.Intersection.BrepBrep(a, b, tolerance)
@@ -1439,25 +1528,6 @@ class SurfaceBuilder(CurveBuilder):
 
         return Curves, Points
 
-    def SplitAtIntersection(self):
-        pass
-        # breps = a.Split(b, tolerance)
-        #
-        # if len(breps) > 0:
-        #     rhobj = rs.coercerhinoobject(a, True)
-        #     if rhobj:
-        #         attr = rhobj.Attributes if rs.ContextIsRhino() else None
-        #         result = []
-        #
-        #         for i in range(len(breps)):
-        #             if i == 0:
-        #                 doc.Objects.Replace(rhobj.Id, breps[i])
-        #                 result.append(rhobj.Id)
-        #             else:
-        #                 result.append(doc.Objects.AddBrep(breps[i], attr))
-        #     else:
-        #         result = [doc.Objects.AddBrep(brep) for brep in breps]
-
     def BuildBorders(self):
         # for curve in self.Curves:
         #     id = doc.Objects.AddCurve(curve)
@@ -1470,7 +1540,7 @@ class SurfaceBuilder(CurveBuilder):
             rs.ObjectLayer(id, 'Border::Outer')
 
     def BuildBoundingBox(self):
-        self.BoundingBox = rs.BoundingBox(self.PolySurface)
+        self.BoundingBox = rs.BoundingBox(self.PolySurface['Div2'])
 
         for i, pt in enumerate(self.BoundingBox):
             # id = doc.Objects.AddTextDot(str(i), p)
@@ -1491,43 +1561,6 @@ class SurfaceBuilder(CurveBuilder):
         rs.ZoomBoundingBox(bx, all=True)
         rs.AddNamedView('Base', 'Perspective')
 
-    def ConvertToBeziers():
-        pass
-
-        layer = rs.AddLayer('Beziers')
-        beziers = []
-
-        # for srf in self.Surfaces:
-        #     bezier = Rhino.ConvertSurfaceToBezier(srf, False)
-        #     beziers.append(bezier)
-        #     rs.ObjectLayer(bezier, layer)
-
-        # rs.ObjectsByType(rs.filter.polysurface, True)
-        # rs.Command('ConvertToBeziers')
-
-        rs.LayerLocked(layer, True)
-
-        return beziers
-
-    def BuildSilhouette():
-        pass
-
-        rs.CurrentLayer('PolySurface')
-        rs.Command('_Silhouette')
-        for id in rs.ObjectsByType(rs.filter.curve, True):
-            rs.ObjectLayer(id, 'Silhouette')
-        rs.LayerLocked('Silhouette', True)
-
-    def ClosestPoint(self, srf, point, maxDistance=0.1):
-        '''
-        If maximumDistance > 0, then only points whose distance is <= maximumDistance will be returned.
-        http://developer.rhino3d.com/api/RhinoCommon/html/M_Rhino_Geometry_Brep_ClosestPoint_1.htm
-        '''
-        brep = Brep.TryConvertBrep(srf)
-        _ = brep.ClosestPoint(point, maxDistance)
-
-        return _[0], (_[3], _[4])
-
     def ExtractIsoCurve(self, srf, parameter, direction=0):
         def render(curves, layer):
             for curve in curves:
@@ -1541,13 +1574,14 @@ class SurfaceBuilder(CurveBuilder):
 
         for i, args in enumerate((('U', 1), ('V', 0))):
             arr = eval(args[0])
-            layer = '::'.join(['Wireframe', args[0]])
+            layer = '::'.join(['IsoCurves', args[0]])
 
             if direction in (i, 2):
                 if isBrep:
-                    arr.extend(srf.TrimAwareIsoCurve(0, parameter[args[1]]))
+                    arr.extend(srf.TrimAwareIsoCurve(i, parameter[args[1]]))
                 else:
-                    arr.append(srf.IsoCurve(0, parameter[args[1]]))
+                    arr.append(srf.IsoCurve(i, parameter[args[1]]))
+
                 render(arr, layer)
 
         return U, V
@@ -1578,9 +1612,55 @@ class SurfaceBuilder(CurveBuilder):
 
                 id = doc.Objects.AddPoint(point)
                 self.__rendered__(id)
-                rs.ObjectLayer(id, 'Wireframe::U::Divisions')
+                rs.ObjectLayer(id, 'IsoCurves::U::Divisions')
 
         return arr
+
+    def ConvertToBeziers():
+        pass
+
+        layer = rs.AddLayer('Beziers')
+        beziers = []
+
+        # for srf in self.Surfaces['Div2']:
+        #     bezier = Rhino.ConvertSurfaceToBezier(srf, False)
+        #     beziers.append(bezier)
+        #     rs.ObjectLayer(bezier, layer)
+
+        # rs.ObjectsByType(rs.filter.polysurface, True)
+        # rs.Command('ConvertToBeziers')
+
+        rs.LayerLocked(layer, True)
+
+        return beziers
+
+    def SplitAtIntersection(self):
+        pass
+        # breps = a.Split(b, tolerance)
+        #
+        # if len(breps) > 0:
+        #     rhobj = rs.coercerhinoobject(a, True)
+        #     if rhobj:
+        #         attr = rhobj.Attributes if rs.ContextIsRhino() else None
+        #         result = []
+        #
+        #         for i in range(len(breps)):
+        #             if i == 0:
+        #                 doc.Objects.Replace(rhobj.Id, breps[i])
+        #                 result.append(rhobj.Id)
+        #             else:
+        #                 result.append(doc.Objects.AddBrep(breps[i], attr))
+        #     else:
+        #         result = [doc.Objects.AddBrep(brep) for brep in breps]
+
+    def BuildSilhouette():
+        pass
+
+        rs.CurrentLayer('PolySurface')
+        rs.Command('_Silhouette')
+        for id in rs.ObjectsByType(rs.filter.curve, True):
+            rs.ObjectLayer(id, 'Silhouette')
+        rs.LayerLocked('Silhouette', True)
 
 
 __builders__ = {

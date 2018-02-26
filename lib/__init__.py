@@ -21,11 +21,18 @@ rs.EnableRedraw(True)
 # --------|--------------|----------|---------
 # Min     | 0.0000000001 | 0.0001   | 0.0001
 # Default | 0.001        | 1.0      | 1.0
+
+# System: 4
+# AbsoluteTolerance: 0.0000001
+# RelativeTolerance: 0.0
+# AngleTolerance: 0.0
+# Produces clean silhouette curves, higher tolerance 0.1 produce fragmented silhouette edges
+# IsoCurves do not match surface exactly and therefore higher tolerance is necessary.
 #
 rs.UnitAbsoluteTolerance(0.0000001, True)
-rs.UnitRelativeTolerance(0.0001, True)
-rs.UnitAngleTolerance(0.0001, True)
-rs.UnitSystem(13, False, True)  # 13 == 'nanometres'
+rs.UnitRelativeTolerance(0.1, True)
+rs.UnitAngleTolerance(0.1, True)
+rs.UnitSystem(2, False, True)  # 13 == 'nanometres'
 
 # Allow rotation when in Parallel
 ApplicationSettings.ViewSettings.AlwaysPanParallelViews = False
