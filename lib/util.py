@@ -61,6 +61,10 @@ def Palette():
     return arr
 
 
+def layer(*args):
+    return '::'.join([str(e) for e in args])
+
+
 def chunk(list, size):
     '''
     Yield successive chunks of `size` from `list`.

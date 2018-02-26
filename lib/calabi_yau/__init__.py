@@ -13,17 +13,27 @@ import rhinoscriptsyntax as rs
 from Rhino.Geometry import Brep, BrepFace, ControlPoint, Curve, CurveKnotStyle, Mesh, NurbsCurve, NurbsSurface, Point3d, Vector3d, Intersect
 from Rhino.Collections import Point3dList, CurveList
 import Rhino
-import utility
+import util
 import export
 from export import fname
 from events import EventHandler
 
-
-reload(utility)
+reload(util)
 reload(export)
 
 
-log = open('./log.txt', 'w')
+class Config:
+    __slots__ = ['IsoCurves', 'Log']
+
+    def __init__(self, **kwargs):
+        self.IsoCurves = kwargs['isoCurves']
+        self.Log = open(kwargs['log'], 'w')
+
+
+__conf__ = Config(
+    isoCurves=False,
+    log='./log.txt'
+)
 
 
 def GetUserInput():
@@ -323,6 +333,7 @@ class Builder:
         __palette__ : list<list<System.Drawing.Color>>
         Analysis : dict
         Rendered : dict
+            Store Rhino object ids by object type.
         BoundingBox : list
         Points : list<Rhino.Geometry.Point3d>
         Point : Rhino.Geometry.Point3d
@@ -410,7 +421,7 @@ class Builder:
         self.Patches = []
         self.Patch = None
         self.PatchCount = 0
-        self.__palette__ = utility.Palette()
+        self.__palette__ = util.Palette()
 
         self.Analysis = PointAnalysis
         self.Analysis.update({
@@ -430,7 +441,10 @@ class Builder:
 
         self.Rendered = {
             'Curves': [],
+            'Intersect': [],
             'Surfaces': {'Div1': [], 'Div2': []},
+            'PolySurface': {'Div1': [], 'Div2': []},
+            'IsoCurves': {'U': [], 'V': []},
             'Meshes': {},
             'Points': {}
         }
@@ -722,16 +736,22 @@ class Builder:
     def Render(self, cb, group, *args, **kwargs):
         '''
         Evaluates `cb()` and assigns Geometry to patch layer.
+        Parameters:
+            cb : function
+            group : string
         '''
         ids = []
 
-        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
-            parent = rs.AddLayer('::'.join([group, str(k1)]))
+        for k1, phase in enumerate(util.chunk(self.Patches, self.n)):
+            parent = rs.AddLayer(util.layer(group, k1))
 
             for k2, patch in enumerate(phase):
-                colour = self.Colour(self.n, k1, k2)
-                layer = rs.AddLayer('::'.join([parent, str(k2)]), colour)
-                cb(phase, patch, layer, ids)
+                cb(
+                    phase,
+                    patch,
+                    (util.layer(parent, k2), self.Colour(self.n, k1, k2)),
+                    ids
+                )
 
         doc.Views.Redraw()
 
@@ -739,7 +759,7 @@ class Builder:
 
     def AddLayers(self):
         for str in ('01', '02', '03', '04', '05'):
-            layer = ' '.join(['Layer', str])
+            layer = ' '.join(('Layer', str))
             if rs.IsLayer(layer):
                 rs.DeleteLayer(layer)
 
@@ -759,11 +779,12 @@ class PointCloudBuilder(Builder):
 
         self.Layers.append('Points')
 
-
     def Render(self, *args):
         parent = rs.AddLayer('Points')
 
         def cb(phase, patch, layer, ids):
+            layer = rs.AddLayer(*layer)
+
             for point in patch.Points:
                 id = doc.Objects.AddPoint(point)
                 ids.append(id)
@@ -842,7 +863,9 @@ class MeshBuilder(Builder):
         parent = rs.AddLayer('Meshes')
 
         def cb(phase, patch, layer, ids):
-            for i, mesh in enumerate([patch.MeshA, patch.MeshB]):
+            layer = rs.AddLayer(*layer)
+
+            for i, mesh in enumerate((patch.MeshA, patch.MeshB)):
                 id = doc.Objects.AddMesh(mesh)
                 ids.append(id)
                 rs.ObjectLayer(id, layer)
@@ -905,10 +928,11 @@ class CurveBuilder(Builder):
         # "cross-sections"
         for div in self.XDiv:
             setattr(self, div, [])
-        # "isocurves"
-        for direction in ('U', 'V'):
-            for i in range(getattr(self, direction)):
-                setattr(self, direction + str(i), Point3dList())
+
+        if __conf__.IsoCurves:
+            for direction in ('U', 'V'):
+                for i in range(getattr(self, direction)):
+                    setattr(self, direction + str(i), Point3dList())
 
     def __listeners__(self):
         listeners = Builder.__listeners__(self)
@@ -939,9 +963,11 @@ class CurveBuilder(Builder):
             setattr(self, div, Point3dList())
         for div in self.XDiv:
             setattr(self, div, Point3dList())
-        for direction in ('U', 'V'):
-            for i in range(getattr(self, direction)):
-                setattr(self, direction + str(i), Point3dList())
+
+        if __conf__.IsoCurves:
+            for direction in ('U', 'V'):
+                for i in range(getattr(self, direction)):
+                    setattr(self, direction + str(i), Point3dList())
 
     def PlotRails(self, *args):
         '''
@@ -993,9 +1019,10 @@ class CurveBuilder(Builder):
         '''
         # k1, k2, a, b = args
 
-        for direction in ('U', 'V'):
-            count = getattr(self, direction + 'Count') - 1
-            getattr(self, direction + str(count)).Add(self.Point)
+        if __conf__.IsoCurves:
+            for direction in ('U', 'V'):
+                count = getattr(self, direction + 'Count') - 1
+                getattr(self, direction + str(count)).Add(self.Point)
 
     def BuildCurves(self, *args):
         R = CurveList()
@@ -1013,26 +1040,27 @@ class CurveBuilder(Builder):
             for collection in (X, self.X, self.Curves):
                 collection.Add(curve)
 
-        for direction in ('U', 'V'):
-            for i in range(getattr(self, direction)):
-                curves = []
-                points = getattr(self, direction + str(i))
+        if __conf__.IsoCurves:
+            for direction in ('U', 'V'):
+                for i in range(getattr(self, direction)):
+                    curves = []
+                    points = getattr(self, direction + str(i))
 
-                if direction == 'V':  # Ensure sharp kink
-                    points = list(points)
-                    div = int(self.Analysis['V/2'] - 1)
-                    curves.extend([
-                        Builder.BuildInterpolatedCurve(points[0:-div], self.Degree),
-                        Builder.BuildInterpolatedCurve(points[div:], self.Degree)
-                    ])
-                else:
-                    curves.append(
-                        Builder.BuildInterpolatedCurve(points, self.Degree)
-                    )
+                    if direction == 'V':  # Ensure sharp kink
+                        points = list(points)
+                        count = int(self.Analysis['V/2'] - 1)
+                        curves.extend([
+                            Builder.BuildInterpolatedCurve(points[0:-count], self.Degree),
+                            Builder.BuildInterpolatedCurve(points[count:], self.Degree)
+                        ])
+                    else:
+                        curves.append(
+                            Builder.BuildInterpolatedCurve(points, self.Degree)
+                        )
 
-                for collection in (self.IsoCurves[direction], self.Patch.IsoCurves[direction]):
-                    for curve in curves:
-                        collection.Add(curve)
+                    for collection in (self.IsoCurves[direction], self.Patch.IsoCurves[direction]):
+                        for curve in curves:
+                            collection.Add(curve)
 
         self.Patch.Edges = (R, X)
 
@@ -1045,17 +1073,21 @@ class CurveBuilder(Builder):
 
             # Builder.FindCurveCentre(curve, '[' + str(k1) + ',' + str(k2) + ']')
 
-        # for e in ('U', 'V'):
-        #     layer = rs.AddLayer('::'.join(['IsoCurves', e]), Color.Purple)
-        #
-        #     # for curve in self.IsoCurves[e]:
-        #     for curve in Curve.JoinCurves(self.IsoCurves[e]):
-        #         id = doc.Objects.AddCurve(curve)
-        #         self.__rendered__(id)
-        #         rs.ObjectLayer(id, layer)
+        if __conf__.IsoCurves:
+            # Although better aesthetically IsoCurves generated from points aren't within
+            # AbsoluteTolerance of the surface.
+            # When tolerance < 0.1 `Make2d` obscures curves falling slightly behind the surface.
+            for e in ('U', 'V'):
+                layer = rs.AddLayer(util.layer('IsoCurves', e), Color.Purple)
 
-        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
-            parent = rs.AddLayer('::'.join(['Curves', str(k1)]))
+                # for curve in self.IsoCurves[e]:
+                for curve in Curve.JoinCurves(self.IsoCurves[e]):
+                    id = doc.Objects.AddCurve(curve)
+                    self.__rendered__(id)
+                    rs.ObjectLayer(id, layer)
+
+        for k1, phase in enumerate(util.chunk(self.Patches, self.n)):
+            parent = rs.AddLayer(util.layer('Curves', k1))
 
             for k2, patch in enumerate(phase):
                 R, X = patch.Edges
@@ -1064,7 +1096,7 @@ class CurveBuilder(Builder):
 
                 # colour = self.__palette__[-k2][-1]
                 colour = self.Colour(self.n, k1, k2)
-                layer = rs.AddLayer('::'.join([parent, str(k2)]), colour)
+                layer = rs.AddLayer(util.layer(parent, k2), colour)
 
                 for div in self.RDiv:
                     curve = eval(div)
@@ -1073,10 +1105,6 @@ class CurveBuilder(Builder):
                 for div in self.XDiv:
                     curve = eval(div)
                     cb(curve, layer)
-
-                # for direction in ('U', 'V'):
-                #     for curve in patch.IsoCurves[direction]:
-                #         cb(curve, '::'.join(['IsoCurves', direction]))
 
                 # for edgeGroup in (Edges1, Edges2):
                 #     # Create Boundary Representation
@@ -1099,7 +1127,7 @@ class CurveBuilder(Builder):
         '''
         # Find intersections
         # Then draw a curve between points over the surface
-        for k1, phase in enumerate(utility.chunk(self.Patches, self.n)):
+        for k1, phase in enumerate(util.chunk(self.Patches, self.n)):
             for k2, patch in enumerate(phase):
 
                 for srf in patch.Surfaces['Div2']:
@@ -1210,8 +1238,8 @@ class SurfaceBuilder(CurveBuilder):
             'IsoCurves',
             'IsoCurves::U',
             'IsoCurves::V',
-            'IsoCurves::U::Divisions',
-            'IsoCurves::V::Divisions'
+            # 'IsoCurves::U::Divisions',
+            # 'IsoCurves::V::Divisions'
             # 'RenderMesh',
         ])
         self.Surfaces = {'Div1': [], 'Div2': []}
@@ -1390,6 +1418,15 @@ class SurfaceBuilder(CurveBuilder):
                     self.VDegree
                 )
 
+                # Build IsoCurves from PointGrid. Do this for 'Div1' surfaces only.
+                # Make2d seems to perform better when given fewer objects properly joined.
+                for i, direction in enumerate(('U', 'V')):
+                    curves = self.BuildIsoCurves(srf, pointGrid, direction, 10)
+
+                    for collection in (self.IsoCurves[direction], self.Patch.IsoCurves[direction]):
+                        for curve in curves:
+                            collection.Add(curve)
+
                 cache(srf, 'Div1')
 
         for i in range(0, 2, 1):
@@ -1435,93 +1472,12 @@ class SurfaceBuilder(CurveBuilder):
 
     def Render(self, *args):
         def cb(phase, patch, layer, ids):
-            tolerance = doc.ModelAbsoluteTolerance
-            colour = rs.LayerColor(layer)
+            layer, colour = layer
 
             for i, e in enumerate(('Div1', 'Div2')):
-                subLayer = rs.AddLayer('::'.join([layer, str(i)]), colour)
-
-                count = len(patch.Surfaces[e])
-                mid = int(round(count / 2.0))
-                cols = []
+                subLayer = rs.AddLayer(util.layer('Surfaces', e, *patch.Phase), colour)
 
                 for i, srf in enumerate(patch.Surfaces[e]):
-                    """
-                    TODO
-                        Use InterpCurveOnSrf rather than ExtractIsoCurve between points on either opposing sides of the surface
-                    """
-                    if e == 'Div1':
-                        # self.BuildWireMesh(srf)
-
-                        div = 6
-                        grid = patch.PointGrid[e][i]
-                        row = grid.has_key('U') and grid['U']
-
-                        if row:
-                            A = srf.InterpolatedCurveOnSurface(row[0], tolerance)
-                            B = srf.InterpolatedCurveOnSurface(row[-1], tolerance)
-                            APoints = self.DivideCurve(A, div)
-                            BPoints = self.DivideCurve(B, div)
-                            for i2 in range(div + 1):
-                                curve = srf.InterpolatedCurveOnSurface((APoints[i2], BPoints[i2]), tolerance)
-
-                                id = doc.Objects.AddCurve(curve)
-                                self.__rendered__(id)
-                                # rs.ObjectLayer(id, layer)
-
-                        col = grid.has_key('V') and grid['V']
-
-                        if col:
-                            A = srf.InterpolatedCurveOnSurface(col[0], tolerance)
-                            B = srf.InterpolatedCurveOnSurface(col[-1], tolerance)
-                            APoints = self.DivideCurve(A, div)
-                            BPoints = self.DivideCurve(B, div)
-                            for i2 in range(div + 1):
-                                curve = srf.InterpolatedCurveOnSurface((APoints[i2], BPoints[i2]), tolerance)
-
-                                id = doc.Objects.AddCurve(curve)
-                                self.__rendered__(id)
-                                # rs.ObjectLayer(id, layer)
-
-
-                        # if i < mid:
-                        #     grid = patch.PointGrid[e][i]
-                        #     row = grid.has_key('U') and grid['U']
-                        #
-                        #     if row:
-                        #         A = srf.InterpolatedCurveOnSurface(row[0], tolerance)
-                        #         B = srf.InterpolatedCurveOnSurface(row[-1], tolerance)
-                        #         div = 3
-                        #         APoints = self.DivideCurve(A, div)
-                        #         BPoints = self.DivideCurve(B, div)
-                        #         for i2 in range(div + 1):
-                        #             srf.InterpolatedCurveOnSurface((APoints[i2], BPoints[i2]), tolerance)
-                        #
-                        #         # for point in points:
-                        #         #     # rs.AddPoint(point)
-                        #         #     result, parameter = self.ClosestPoint(srf, point, 0.1)
-                        #         #     if result:
-                        #         #         U, V = self.ExtractIsoCurve(srf, parameter, 1)
-                        #         #         for curve in U:
-                        #         #             points.append(curve.PointAtEnd)
-                        # if i < mid:
-                        #     points = []
-                        #     col = grid.has_key('V') and grid['V']
-                        #
-                        #     for point in col[0]:
-                        #         # rs.AddPoint(point)
-                        #         result, parameter = self.ClosestPoint(srf, point, 0.1)
-                        #         if result:
-                        #             U, V = self.ExtractIsoCurve(srf, parameter, 0)
-                        #             for curve in U:
-                        #                 points.append(curve.PointAtEnd)
-                        #         cols.append(points)
-                        # else:
-                        #     for point in cols[i - mid]:
-                        #         # rs.AddPoint(point)
-                        #         parameter = rs.SurfaceClosestPoint(srf, point)
-                        #         self.ExtractIsoCurve(srf, parameter, 0)
-
                     id = doc.Objects.AddSurface(srf)
                     self.__rendered__(id)
                     ids.append(id)
@@ -1533,7 +1489,6 @@ class SurfaceBuilder(CurveBuilder):
 
     def Finalize(self):
         # Redundant
-        #   * `self.BuildWireframe()`
         #   * `self.ConvertToBeziers()`
         #   * `self.BuildSilhouette()`
         self.CombineCurves()
@@ -1541,6 +1496,7 @@ class SurfaceBuilder(CurveBuilder):
         self.CombineBreps()
         self.BuildPolySurface()
         self.BuildBorders()
+        self.BuildWireframe()
         # self.IntersectCurves()
         Curves, Points = self.IntersectSurfaces()
         # self.SplitAtIntersection()
@@ -1554,20 +1510,18 @@ class SurfaceBuilder(CurveBuilder):
 
         doc.Views.Redraw()
 
-    def BuildWireMesh(self, srf, count=3):
-        pass
-
     def BuildPolySurface(self):
         tolerance = 0.1
 
         for i, e in enumerate(('Div1', 'Div2')):
-            layer = rs.AddLayer('::'.join(['PolySurface', str(i)]))
+            layer = rs.AddLayer(util.layer('PolySurface', i))
             result = Brep.JoinBreps(self.Breps[e], tolerance)
 
             for srf in result:
                 id = doc.Objects.AddBrep(srf)
                 self.__rendered__(id)
                 rs.ObjectLayer(id, layer)
+                self.Rendered['PolySurface'][e].append(id)
 
             self.PolySurface[e], = result
 
@@ -1579,22 +1533,36 @@ class SurfaceBuilder(CurveBuilder):
         Curves = CurveList()
         Points = Point3dList()
 
+        Edges = [(e.PointAtStart, e.PointAtEnd) for e in self.Curves]
+
+        # Use smaller divisions -- 'Div2' to demarcate patch self-intersection(s)
         for combination in self.BrepCombinations['Div2']:
             a, b = combination
 
             result, curves, points = Intersect.Intersection.BrepBrep(a, b, tolerance)
 
             for point in points:
+                pass
+
                 Points.Add(point)
                 id = doc.Objects.AddPoint(point)
                 self.__rendered__(id)
                 rs.ObjectLayer(id, 'Intersect::Points')
 
             for curve in curves:
-                Curves.Add(curve)
-                id = doc.Objects.AddCurve(curve)
-                self.__rendered__(id)
-                rs.ObjectLayer(id, 'Intersect::Curves')
+                C1 = curve.PointAtStart
+                C2 = curve.PointAtEnd
+
+                for edge in Edges:
+                    E1, E2 = edge
+                    match = C1.EpsilonEquals(E1, 0.1) and C2.EpsilonEquals(E2, 0.1) or C1.EpsilonEquals(E2, 0.1) and C2.EpsilonEquals(E1, 0.1)  # reverse
+
+                    if not match:
+                        Curves.Add(curve)
+                        id = doc.Objects.AddCurve(curve)
+                        self.__rendered__(id)
+                        rs.ObjectLayer(id, 'Intersect::Curves')
+                        self.Rendered['Intersect'].append(id)
 
         return Curves, Points
 
@@ -1631,6 +1599,41 @@ class SurfaceBuilder(CurveBuilder):
         rs.ZoomBoundingBox(bx, all=True)
         rs.AddNamedView('Base', 'Perspective')
 
+    def BuildWireframe(self, join=True):
+        for e in ('U', 'V'):
+            if join:
+                curves = Curve.JoinCurves(self.IsoCurves[e], 0.1, False)
+            else:
+                curves = self.IsoCurves[e]
+
+            for curve in curves:
+                id = doc.Objects.AddCurve(curve)
+                self.__rendered__(id)
+                rs.ObjectLayer(id, util.layer('IsoCurves', e))
+                # Add id to self.Rendered['IsoCurves'] to facilitate staged Make2d algorithm.
+                self.Rendered['IsoCurves'][e].append(id)
+
+        return self.Rendered['IsoCurves']
+
+    def BuildIsoCurves(self, srf, grid, direction, count=3):
+        '''
+        `ExtractIsoCurve` produces discontinuous curves
+        '''
+        tolerance = doc.ModelAbsoluteTolerance
+        points = grid[direction]
+        curves = []
+
+        Edge1 = srf.InterpolatedCurveOnSurface(points[0], tolerance)
+        Edge2 = srf.InterpolatedCurveOnSurface(points[-1], tolerance)
+        Div1 = self.DivideCurve(Edge1, count)
+        Div2 = self.DivideCurve(Edge2, count)
+
+        for i in range(count + 1):
+            points = (Div1[i], Div2[i])  # start, end
+            curves.append(srf.InterpolatedCurveOnSurface(points, tolerance))
+
+        return curves
+
     def ExtractIsoCurve(self, srf, parameter, direction=0):
         def render(curves, layer):
             for curve in curves:
@@ -1644,7 +1647,7 @@ class SurfaceBuilder(CurveBuilder):
 
         for i, args in enumerate((('U', 1), ('V', 0))):
             arr = eval(args[0])
-            layer = '::'.join(['IsoCurves', args[0]])
+            layer = util.layer('IsoCurves', args[0])
 
             if direction in (i, 2):
                 if isBrep:

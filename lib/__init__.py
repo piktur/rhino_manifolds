@@ -3,10 +3,11 @@ import rhinoscriptsyntax as rs
 from scriptcontext import doc
 
 import events
-import utility
+import util
 import calabi_yau as CalabiYau
 from export import Export
 
+reload(util)
 reload(CalabiYau)
 
 # Disable Autosave to prevent filesharing conflicts
