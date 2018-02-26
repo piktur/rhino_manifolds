@@ -299,6 +299,7 @@ class Builder:
         Scale : int
             [1..100]
         Offset : tuple(int, int)
+        Layers : list<string>
         ndigits : int
             Rounding
         U : int
@@ -362,6 +363,12 @@ class Builder:
         self.Step = step
         self.Scale = scale
         self.Offset = offset
+
+        self.Layers = [
+            'BoundingBox',
+            'Camera',
+            '2D'
+        ]
 
         # Floating point precision.
         # Increase when self.U and/or self.V increases
@@ -488,6 +495,7 @@ class Builder:
 
             self.Events.publish('k1.out', k1)
 
+        self.AddLayers()
         self.Render()
 
     def Finalize(self):
@@ -730,34 +738,12 @@ class Builder:
         return ids
 
     def AddLayers(self):
-        layers = [
-            'Points',
-            'Meshes',
-            'Curves',
-            'Surfaces',
-            'PolySurface',
-            'Intersect::Curves',
-            'Intersect::Points',
-            'Border::All',
-            'Border::Outer',
-            # 'Silhouette',
-            'IsoCurves',
-            'IsoCurves::U',
-            'IsoCurves::V',
-            'IsoCurves::U::Divisions',
-            'IsoCurves::V::Divisions',
-            # 'RenderMesh',
-            'BoundingBox',
-            'Camera',
-            '2D'
-        ]
-
         for str in ('01', '02', '03', '04', '05'):
             layer = ' '.join(['Layer', str])
             if rs.IsLayer(layer):
                 rs.DeleteLayer(layer)
 
-        for layer in layers:
+        for layer in self.Layers:
             if not rs.IsLayer(layer):
                 layer = rs.AddLayer(layer)
                 rs.LayerPrintColor(layer, Color.Black)
@@ -770,6 +756,9 @@ class PointCloudBuilder(Builder):
 
     def __init__(self, *args):
         Builder.__init__(self, *args)
+
+        self.Layers.append('Points')
+
 
     def Render(self, *args):
         parent = rs.AddLayer('Points')
@@ -788,6 +777,8 @@ class MeshBuilder(Builder):
 
     def __init__(self, *args):
         Builder.__init__(self, *args)
+
+        self.Layers.append('Meshes')
         self.MeshA = None
         self.MeshB = None
         self.MeshCount = 0
@@ -889,6 +880,13 @@ class CurveBuilder(Builder):
     def __init__(self, *args):
         Builder.__init__(self, *args)
 
+        self.Layers.extend([
+            'Curves',
+            'Intersect::Curves',
+            'Intersect::Points',
+            'Border::All',
+            'Border::Outer'
+        ])
         self.Curves = CurveList()
         self.CurveCombinations = None
         self.RDiv = CurveBuilder.RDiv()
@@ -1205,6 +1203,17 @@ class SurfaceBuilder(CurveBuilder):
     def __init__(self, *args):
         CurveBuilder.__init__(self, *args)
 
+        self.Layers.extend([
+            'Surfaces',
+            'PolySurface',
+            # 'Silhouette',
+            'IsoCurves',
+            'IsoCurves::U',
+            'IsoCurves::V',
+            'IsoCurves::U::Divisions',
+            'IsoCurves::V::Divisions'
+            # 'RenderMesh',
+        ])
         self.Surfaces = {'Div1': [], 'Div2': []}
         self.Breps = {'Div1': [], 'Div2': []}
         self.PointGrid = {'Div1': [], 'Div2': []}
@@ -1368,8 +1377,10 @@ class SurfaceBuilder(CurveBuilder):
                 UCount = self.Analysis['U/2']
                 VCount = self.V
 
+                pointGrid = {}
+                self.Patch.PointGrid['Div1'].append(pointGrid)
                 for e in zip(('U', 'V'), PointGrid(points, UCount, VCount)):
-                    self.PointGrid['Div1'].append({e[0]: e[1]})
+                    pointGrid[e[0]] = e[1]
 
                 srf = NurbsSurface.CreateFromPoints(
                     points,
@@ -1389,8 +1400,10 @@ class SurfaceBuilder(CurveBuilder):
                     UCount = self.Analysis['U/2']
                     VCount = getattr(self, 'V' + str(char) + '_' + str(i))
 
+                    pointGrid = {}
+                    self.Patch.PointGrid['Div2'].append(pointGrid)
                     for e in zip(('U', 'V'), PointGrid(points, UCount, VCount)):
-                        self.PointGrid['Div2'].append({e[0]: e[1]})
+                        pointGrid[e[0]] = e[1]
 
                     srf = NurbsSurface.CreateFromPoints(
                         points,
@@ -1422,37 +1435,92 @@ class SurfaceBuilder(CurveBuilder):
 
     def Render(self, *args):
         def cb(phase, patch, layer, ids):
+            tolerance = doc.ModelAbsoluteTolerance
             colour = rs.LayerColor(layer)
 
             for i, e in enumerate(('Div1', 'Div2')):
                 subLayer = rs.AddLayer('::'.join([layer, str(i)]), colour)
+
                 count = len(patch.Surfaces[e])
                 mid = int(round(count / 2.0))
-                OuterU = []
+                cols = []
 
                 for i, srf in enumerate(patch.Surfaces[e]):
-                    grid = patch.PointGrid[e][i]
-                    for point in grid['V'][0]:
-                        # rs.AddPoint(point)
-                        result, parameter = self.ClosestPoint(srf, point, 0.1)
-                        if result:
-                            U, V = self.ExtractIsoCurve(srf, parameter, 0)
+                    """
+                    TODO
+                        Use InterpCurveOnSrf rather than ExtractIsoCurve between points on either opposing sides of the surface
+                    """
+                    if e == 'Div1':
+                        # self.BuildWireMesh(srf)
 
-                    # if i < mid:
-                    #     points = []
-                    #
-                    #     for point in grid['U'][0]:
-                    #         # rs.AddPoint(point)
-                    #         result, parameter = self.ClosestPoint(srf, point, 0.1)
-                    #         if result:
-                    #             U, V = self.ExtractIsoCurve(srf, parameter, 1)
-                    #             for curve in U:
-                    #                 points.append(curve.PointAtStart)
-                    #         OuterU.append(points)
-                    # else:
-                    #     for point in OuterU[i - mid]:
-                    #         parameter = rs.SurfaceClosestPoint(srf, point)
-                    #         self.ExtractIsoCurve(srf, parameter, 0)
+                        div = 6
+                        grid = patch.PointGrid[e][i]
+                        row = grid.has_key('U') and grid['U']
+
+                        if row:
+                            A = srf.InterpolatedCurveOnSurface(row[0], tolerance)
+                            B = srf.InterpolatedCurveOnSurface(row[-1], tolerance)
+                            APoints = self.DivideCurve(A, div)
+                            BPoints = self.DivideCurve(B, div)
+                            for i2 in range(div + 1):
+                                curve = srf.InterpolatedCurveOnSurface((APoints[i2], BPoints[i2]), tolerance)
+
+                                id = doc.Objects.AddCurve(curve)
+                                self.__rendered__(id)
+                                # rs.ObjectLayer(id, layer)
+
+                        col = grid.has_key('V') and grid['V']
+
+                        if col:
+                            A = srf.InterpolatedCurveOnSurface(col[0], tolerance)
+                            B = srf.InterpolatedCurveOnSurface(col[-1], tolerance)
+                            APoints = self.DivideCurve(A, div)
+                            BPoints = self.DivideCurve(B, div)
+                            for i2 in range(div + 1):
+                                curve = srf.InterpolatedCurveOnSurface((APoints[i2], BPoints[i2]), tolerance)
+
+                                id = doc.Objects.AddCurve(curve)
+                                self.__rendered__(id)
+                                # rs.ObjectLayer(id, layer)
+
+
+                        # if i < mid:
+                        #     grid = patch.PointGrid[e][i]
+                        #     row = grid.has_key('U') and grid['U']
+                        #
+                        #     if row:
+                        #         A = srf.InterpolatedCurveOnSurface(row[0], tolerance)
+                        #         B = srf.InterpolatedCurveOnSurface(row[-1], tolerance)
+                        #         div = 3
+                        #         APoints = self.DivideCurve(A, div)
+                        #         BPoints = self.DivideCurve(B, div)
+                        #         for i2 in range(div + 1):
+                        #             srf.InterpolatedCurveOnSurface((APoints[i2], BPoints[i2]), tolerance)
+                        #
+                        #         # for point in points:
+                        #         #     # rs.AddPoint(point)
+                        #         #     result, parameter = self.ClosestPoint(srf, point, 0.1)
+                        #         #     if result:
+                        #         #         U, V = self.ExtractIsoCurve(srf, parameter, 1)
+                        #         #         for curve in U:
+                        #         #             points.append(curve.PointAtEnd)
+                        # if i < mid:
+                        #     points = []
+                        #     col = grid.has_key('V') and grid['V']
+                        #
+                        #     for point in col[0]:
+                        #         # rs.AddPoint(point)
+                        #         result, parameter = self.ClosestPoint(srf, point, 0.1)
+                        #         if result:
+                        #             U, V = self.ExtractIsoCurve(srf, parameter, 0)
+                        #             for curve in U:
+                        #                 points.append(curve.PointAtEnd)
+                        #         cols.append(points)
+                        # else:
+                        #     for point in cols[i - mid]:
+                        #         # rs.AddPoint(point)
+                        #         parameter = rs.SurfaceClosestPoint(srf, point)
+                        #         self.ExtractIsoCurve(srf, parameter, 0)
 
                     id = doc.Objects.AddSurface(srf)
                     self.__rendered__(id)
@@ -1468,7 +1536,6 @@ class SurfaceBuilder(CurveBuilder):
         #   * `self.BuildWireframe()`
         #   * `self.ConvertToBeziers()`
         #   * `self.BuildSilhouette()`
-        self.AddLayers()
         self.CombineCurves()
         self.CombineSurfaces()
         self.CombineBreps()
@@ -1486,6 +1553,9 @@ class SurfaceBuilder(CurveBuilder):
             rs.LayerLocked(layer, True)
 
         doc.Views.Redraw()
+
+    def BuildWireMesh(self, srf, count=3):
+        pass
 
     def BuildPolySurface(self):
         tolerance = 0.1
@@ -1586,35 +1656,29 @@ class SurfaceBuilder(CurveBuilder):
 
         return U, V
 
-    def DivideCurves(self, count=10, length=10):
+    def DivideCurve(self, curve, count=10, length=10):
         '''
         `Curve.DivideByLength` varies according to curvature
         unlike `Curve.DivideEquidistant`
+
+        Example:
+            for curve in self.Outer:  # Curve.JoinCurves(self.Outer):
+                self.DivideCurve(curve, 20)
+
         Parameters:
             count : int
             length : float
                 n * UnitSystem between points along
         '''
-        arr = []
+        # points = curve.DivideEquidistant(length)
 
-        for curve in self.Outer:  # Curve.JoinCurves(self.Outer):
-            # result = curve.DivideByLength(length, True)
-            # points = [curve.PointAt(t) for t in result]
+        # result = curve.DivideByLength(length, True)
+        # points = [curve.PointAt(t) for t in result]
 
-            # Distances will differ per curve
-            result = curve.DivideByCount(count, True)
-            points = [curve.PointAt(t) for t in result]
+        # Distances will differ per curve
+        result = curve.DivideByCount(count, True)
 
-            # points = curve.DivideEquidistant(length)
-
-            for point in points:
-                arr.append(point)
-
-                id = doc.Objects.AddPoint(point)
-                self.__rendered__(id)
-                rs.ObjectLayer(id, 'IsoCurves::U::Divisions')
-
-        return arr
+        return [curve.PointAt(t) for t in result]
 
     def ConvertToBeziers():
         pass
