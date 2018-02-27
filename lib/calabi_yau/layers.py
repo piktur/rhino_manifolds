@@ -1,3 +1,7 @@
+# Automate Make2d
+# [1](https://gist.github.com/bengolder/3959792)
+# [2](http://archiologics.com/2011-10-20-15-32-52/rhino-scripts/animation-tools/81-rvb-batch-render-make2d)
+
 def Make2D():
     '''
     [See](https://github.com/localcode/rhinopythonscripts/blob/master/Make2D.py)

@@ -30,7 +30,8 @@ rs.EnableRedraw(True)
 # Produces clean silhouette curves, higher tolerance 0.1 produce fragmented silhouette edges
 # IsoCurves do not match surface exactly and therefore higher tolerance is necessary.
 #
-rs.UnitAbsoluteTolerance(0.0000001, True)
+# AbsoluteTolerance: 0.000000001  EVEN BETTER
+rs.UnitAbsoluteTolerance(0.000000001, True)
 rs.UnitRelativeTolerance(0.1, True)
 rs.UnitAngleTolerance(0.1, True)
 rs.UnitSystem(2, False, True)  # 13 == 'nanometres'
