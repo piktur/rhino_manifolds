@@ -7,14 +7,18 @@ import rhinoscriptsyntax as rs
 import scriptcontext
 from scriptcontext import doc, errorhandler
 import Rhino.Geometry.NurbsSurface as NurbsSurface
+import Rhino.Geometry.NurbsCurve as NurbsCurve
 import Rhino.Geometry.Point3d as Point3d
 import Rhino.Geometry.Mesh as Mesh
 import Rhino.Geometry.BrepFace as BrepFace
 import Rhino.Geometry.Brep as Brep
 import Rhino.Geometry.Intersect as Intersect
 import Rhino.Geometry.Curve as Curve
+import Rhino.Geometry.Interval as Interval
+import Rhino.Geometry.Sphere as Sphere
 import Rhino.Geometry.Transform as Transform
 from Rhino.Collections import Point3dList, CurveList
+import Rhino.Geometry as Geometry
 import System.Guid
 import System.Drawing.Color as Color
 # import Grasshopper
@@ -40,43 +44,50 @@ import itertools
 # Surface.IsoCurve()
 # print(Surface.ShortPath())
 # print(Surface.UserData())
-
+#
+# brep.CreateShell()
+# brep.SolidOrientation()
+# brep.Loops()
+# brep.Curves2D()
 
 builder = scriptcontext.sticky['builder']
 log = open('./log.txt', 'w')
 
+# srf = builder.Surfaces['Div1'][0]
+# polysrf = builder.PolySurface['Div1']
+# brep = Brep.TryConvertBrep(srf)
+
 
 # http://www.grasshopper3d.com/profiles/blogs/reverse-and-swap-u-and-v-directions-of-surface
-def Dir(srf, reverseU=False, reverseV=False, swapUV=False):
+def Dir(srf, reverse=None, swap=None):
     '''
     Equivalent to Rhino's `Dir` command
 
-    Grasshopper Lunchbox example
-    def ReverseSrfDirection(srf, direction=0):
-        if direction == 0:
-            return srf
-        elif direction == 1:
-            srf.Reverse(0)
-        elif direction == 2:
-            srf.Reverse(1)
-        elif direction == 3:  # 'UV'
-            srf.Transpose()
+    Grasshopper Lunchbox example:
+    ```
+        def ReverseSrfDirection(srf, direction=0):
+            if direction == 1:
+                srf.Reverse(0)
+            elif direction == 2:
+                srf.Reverse(1)
+            elif direction == 3:  # 'UV'
+                srf.Transpose()
 
-        return srf
+            return srf
+    ```
     '''
-    if reverseU:
+    if reverse in (0, 2):  # Reverse U
         minU, maxU = srf.Domain(0)
-        interval0 = Rhino.Geometry.Interval(-maxU, -minU)
+        interval0 = Interval(-maxU, -minU)
         srf.SetDomain(0, interval0)
         srf = srf.Reverse(0)
-
-    if reverseV:
+    elif reverse in (1, 2):  # Reverse V
         minV, maxV = srf.Domain(1)
-        interval1 = Rhino.Geometry.Interval(-maxV, -minV)
+        interval1 = Interval(-maxV, -minV)
         srf.SetDomain(1, interval1)
         srf = srf.Reverse(1)
 
-    if swapUV:
+    if swap:  # Swap UV
         srf = srf.Transpose()
 
     anchor = srf.PointAt(0.0, 0.0)
@@ -146,8 +157,10 @@ def Normals():
 
 def Analyse(srf):
     _ = {}
-    _['U'] = srf.SpanCount(0)  # + 3
-    _['V'] = srf.SpanCount(1)  # + 3
+    _['U'] = srf.SpanCount(0)  # srf.Points.CountU
+    _['V'] = srf.SpanCount(1)  # srf.Points.CountV
+    # _[''] = srf.OrderU
+    # _[''] = srf.OrderV
     _['minU'], _['maxU'] = srf.Domain(1)
     _['minV'], _['maxV'] = srf.Domain(0)
     _['stepU'] = fabs(_['maxU'] - _['minU']) / float(_['U'] - 1)  # * 2.0  # _['maxU'] / 28.0
@@ -286,6 +299,323 @@ def ExtractIsoCurvesAtSrfControlPoints(srf):
     return U, V
 
 
+def BuildReferenceSphere(centre=(0, 0, 0), radius=200):
+    center = rs.coerce3dpoint(centre)
+    return Sphere(center, radius)
+
+
+def Dimensions():
+    box = builder.BoundingBox
+    origin = box[0]
+
+    dim = [(origin - box[i]).Length for i in (1, 3, 4)]
+    x, y, z = dim
+    # dim.sort()
+
+    diag = [(box[a] - box[b]).Length for (a, b) in itertools.combinations((1, 3, 4), 2)]
+    xy, xz, yz = diag
+    # diag.sort()
+
+    diameter = max(diag)
+    radius = diameter / 2.0
+
+    return diameter, radius, dim, diag
+
+
+def BoxAnalysis():
+    box = Brep.CreateFromBox(builder.BoundingBox)
+
+    print Geometry.AreaMassProperties.Compute(box)
+    print Geometry.VolumeMassProperties.Compute(box)
+
+
+def SampleSurfacePoints(srf):
+    arr = []
+    U = srf.Points.CountU - 1
+    V = srf.Points.CountV - 1
+
+    for u in (0, U / 2, U):
+        for v in (0, V / 2, V):
+            arr.append((u, v))
+
+    return arr
+
+
+def OrientSurfacesToReference(builder):
+    def compare(a, b, coordinate):
+        '''
+        Parameters:
+            a : Rhino.Geometry.Vector3d
+            b : Rhino.Geometry.Vector3d
+            coordinate : str
+        '''
+        a = getattr(a, coordinate)
+        b = getattr(b, coordinate)
+
+        if (a > 0 and b > 0) or (a < 0 and b < 0):
+            print coordinate + ' match'
+            return True
+        else:
+            print 'flip ' + coordinate
+            return False
+
+        '''
+        Returns:
+            -1 if a < b
+            0 if a == b
+            1 if b > b
+
+        return a.CompareTo(b)
+        '''
+
+    diameter, radius, dim, diag = Dimensions()
+
+    ref = BuildReferenceSphere((0, 0, 0), radius)
+    refBrep = ref.ToBrep()
+    id = doc.Objects.AddSphere(ref)
+
+    results = []
+
+    for srf in builder.Surfaces['Div1']:  # srf = builder.Surfaces['Div1'][0]
+        for (u, v) in SampleSurfacePoints(srf):
+            # srfTargetPlane = srf.FrameAt(u, v)[1]
+            srfPoint = srf.Points.GetControlPoint(u, v).Location
+            srfNormal = srf.NormalAt(u, v)
+
+            projection = refBrep.ClosestPoint(srfPoint, radius)
+            refPoint = projection[1]
+            refParameter = projection[3:4]
+            refNormal = projection[5]
+
+            srf.Translate(refNormal)
+
+            # doc.Objects.AddLine(srfPoint, refPoint)
+
+            if compare(refNormal, srfNormal, 'X'):
+                pass
+
+            if compare(refNormal, srfNormal, 'Y'):
+                pass
+
+            if compare(refNormal, srfNormal, 'Z'):
+                pass
+
+                id = builder.Rendered['Surfaces']['Div1'][0]
+                rs.FlipSurface(id, True)
+
+            # for i, axis in enumerate(('X', 'Y')):  # 'Z'
+            #     if not compare(refNormal, srfNormal, axis):
+            #         # srf.Reverse(i)
+            #         srf.Transpose()
+
+    return results
+
+
+# OrientSurfacesToReference(builder)
+
+
+# for p, patch in enumerate(builder.Patches):
+#     for e in ('U'):  # , 'V'
+#         for c1, curve in enumerate(patch.IsoCurves[e]):
+#             closest = None
+#             point = curve.PointAtEnd
+#
+#             for c2, other in enumerate(builder.IsoCurves[e]):
+#                 result, t = other.ClosestPoint(point, 0.1)
+#                 if result:
+#                     testPoint = other.PointAt(t)
+#                     distance = point.DistanceTo(testPoint)
+#                     if closest is None or distance < closest[0]:
+#                         closest = distance, c2, testPoint
+#
+#             distance, c2, testPoint = closest
+#             start.append((p, c1, c2))
+#
+#             # log.write("\n" + str(curve.TangentAtEnd))
+#             # curve.TangentAtStart
+#             # curve.TangentAt(1)
+
+
+def OrderIsoCurvesByProximity():
+    ordered = []
+    tolerance = 0.1  # doc.ModelAbsoluteTolerance
+    colours = (Color.Teal, Color.Red)
+    for e in ('U'):  # , 'V'
+        for c1, curve in enumerate(builder.IsoCurves[e]): # .GetRange(0, 10)
+            closest = None
+            point = curve.PointAtEnd
+
+            for c2, other in enumerate(builder.IsoCurves[e]):
+                if curve != other:
+                    start = other.PointAtStart
+                    end = other.PointAtEnd
+
+                    if Point3d.EpsilonEquals(point, start, 0.1) or \
+                       Point3d.EpsilonEquals(point, end, 0.1):
+                        ordered.append((c1, c2))
+                        break
+
+                # result, t = other.ClosestPoint(point, tolerance)
+                # if result:
+                #     testPoint = other.PointAt(t)
+                #     distance = point.DistanceTo(testPoint)
+                #     if closest is None or distance < closest[0]:
+                #         closest = distance, c2, testPoint
+
+            # distance, c2, testPoint = closest
+            # ordered.append((c1, c2))
+
+        for combination in ordered:
+            for i, pos in enumerate(combination):
+                layer = rs.AddLayer('::'.join(('Combinations', str(i))), colours[i])
+                curve = builder.IsoCurves[e][pos]
+                id = doc.Objects.AddCurve(curve)
+                rs.ObjectLayer(id, layer)
+
+
+def OrderPatches():
+    # start at k1, k2
+    #     take the first curve within the patch
+    #     iterate through all curves to the find the next by closest point
+    #     add patch index to order list
+    #         take this new found patch and repeat until we have gone through all patches
+
+    tolerance = 0.1  # doc.ModelAbsoluteTolerance
+    diameter, radius, dim, diag = Dimensions()
+
+    ref = BuildReferenceSphere((0, 0, 0), radius)
+    refBrep = ref.ToBrep()
+
+    patchOrder = []
+    curveOrder = []
+    disoriented = []
+
+    def FindPatchMaxCurve(curves):
+        closest = None
+
+        # Find the outer most curve by proximity to reference sphere
+        for curve in (curves.First, curves.Last):
+            point = curve.PointAtEnd
+            projection = refBrep.ClosestPoint(point, radius * 2.0)
+            distance = point.DistanceTo(projection[1])
+
+            if closest is None or distance < closest[0]:
+                closest = distance, curve, point
+
+        return closest
+
+    # Direction seems to alternate so iterate every second patch targeting those patches
+    # needing to be flipped.
+    #
+    # for p1, patch1 in enumerate(builder.Patches[::2]):
+    for p1, patch1 in enumerate(builder.Patches):
+        # Use U because of continuity around the entire surface
+        curves = patch1.IsoCurves['Uniform']['U']
+        count = len(curves)
+        # track position within global builder.IsoCurves['Uniform']['U'] collection
+        globalPos = (p1 + 1) * count
+
+        connection = None
+        distanceFromRefSphere, patchMax, point = FindPatchMaxCurve(curves)
+
+        for p2, patch2 in enumerate(builder.Patches):
+            if patch1 != patch2:
+                curves2 = patch2.IsoCurves['Uniform']['U']
+                count2 = len(curves2)
+                globalPos2 = (p2 + 1) * count
+
+                # We may need to use both first and last curves here.
+                # When n i odd some of the patches may straddle the centre making it difficult to
+                # determine the outermost edge.
+                # curve = FindPatchMaxCurve(curves2)[1]
+                for curve in (curves2.First, curves2.Last):
+                    if not connection:
+                        # We need to test connection at both ends because patch direction
+                        # alternates.
+                        start = curve.PointAtStart
+                        end = curve.PointAtEnd
+                        pos2 = globalPos2 + 0
+
+                        # directions match if start to end connection
+                        continuous = Point3d.EpsilonEquals(point, start, tolerance)
+                        # directions NOT matched if end to end connection
+                        discontinuous = Point3d.EpsilonEquals(point, end, tolerance)
+
+                        if discontinuous:
+                            # disoriented.append(p2)
+                            # And reverse all curves before we find patch2's neighbour
+                            for curve in patch2.IsoCurves['Uniform']['U']:
+                                curve.Reverse()
+
+                        if continuous or discontinuous:
+                            connection = p2, curve
+                            patchOrder.append((p1, p2))
+
+                            break
+
+    print(patchOrder)
+
+    order = [0]
+    patches = len(builder.Patches)
+    count = 0
+
+    for i in range(count):
+        p1, p2 = next(x for x in patchOrder if x[0] == order[-1])
+        if count > 0 and p2 == 0:
+            break
+        else:
+            order.append(p2)
+            count += 1
+
+    # rem = []
+    # p1s = [p1 for (p1, p2) in patchOrder]
+    # for e in p1s:
+    #     if e not in order:
+    #         rem.append(e)
+    #
+    # [(0, 3), (1, 7), (2, 0), (3, 4), (4, 7), (5, 8), (6, 3), (7, 8), (8, 2)]
+    # [0, 3, 4, 7, 8, 2, 7, 8, 3]
+    #
+    # for e in rem:
+    #     p1, p2 = next(x for x in patchOrder if x[0] == e)
+    #     order.append(p2)
+
+    # # for i in range(count):
+    # while len(patchOrder) > 0:
+    #     p1, p2 = patchOrder.pop()
+    #     order.append(p2)
+    #     order.append(cont
+    #     for (p1, p2) in patchOrder:
+    #         cont = (p1, p2)
+
+
+    # for i, (p1, p2) in enumerate(patchOrder):
+    #     if i == 0:
+    #         order.append(p1)
+    #     else:
+    #         order.append(p2)
+    #         # order.append(patchOrder[p1][1])
+
+    print order
+
+    # for i, (p1, p2) in enumerate(patchOrder):
+    #     patchIndex, curve = p2
+    #     centre = curve.PointAtNormalizedLength(0.5)
+    #     rs.AddTextDot(i, centre)
+    #
+    #     for srf in builder.Patches[patchIndex].Surfaces['Div1']:
+    #         srf.Transpose()
+    #
+    #     for brep in builder.Patches[patchIndex].Breps['Div1']:
+    #         brep.Flip()
+    #         # print brep.Faces[0].OrientationIsReversed
+
+    return patchOrder
+
+
+OrderPatches()
+
+
 def SeperateUVFromExtractWireframe(srf):
     # Run `ExtractWireframe`
     # Iterate the curves
@@ -315,11 +645,18 @@ def SeperateUVFromExtractWireframe(srf):
             + '_Enter '
         )
 
+
         curves = CurveList()
         for id in rs.LastCreatedObjects(True):
             curve = rs.coercecurve(id)
 
             # TODO Separate by direction
+            # for e in ('U', 'V'):
+            #     for curve in builder.IsoCurves[e]:
+            #         curve.TangentAtEnd
+            #         curve.TangentAtStart
+            #         curve.TangentAt(1)
+
             direction = curve.NormalAt(0, 0)
             N = False
             E = False
@@ -368,6 +705,7 @@ for n in range(2):
     # RenderCurves(U)
     # RenderCurves(V)
 
+
 # REPORT :
 #   *
 # SeperateUVFromExtractWireframe()
@@ -383,7 +721,6 @@ for n, srf in enumerate(patch.Surfaces['Div1']):
     # REPORT :
     #   *
     # ExtractIsoCurvesFromBaseCurveDivisions(srf)
-
 
 
 def Make2d():
@@ -433,178 +770,3 @@ def Make2d():
     #   then find the nearest curve and trim from end to intersection
 
 # Make2d()
-
-# rs.RestoreNamedView(view)
-
-# if __name__ == '__main__':
-#     objs = rs.GetObjects('Select Curves', rs.filter.curve)
-#     curves = []
-#     for obj in objs:
-#         curves.append(rs.coercecurve(obj))
-#
-#     result = []
-#     for a in curves:
-#         for b in curves:
-#             if b != a:
-#                 # rs.CurveCurveIntersection(a, b)
-#                 result.append(Intersect.Intersection.CurveCurve(a, b, doc.ModelAbsoluteTolerance, 0.1))
-#     print result
-
-# # Attempt to draw a curve through ordered points
-# pointsList = Eq.Result['Theta0']
-#
-# # Example 1
-# curve = Builder.BuildInterpolatedCurve(pointsList)
-#
-# # Example 2
-# points = Point3d.SortAndCullPointList(pointsList, doc.ModelAbsoluteTolerance)
-# curve = Builder.BuildInterpolatedCurve(points)
-#
-# # Example 3
-# points = rs.SortPoints(pointsList.ToArray(), True, 5)
-# curve = Builder.BuildInterpolatedCurve(points)
-#
-# curve = Builder.BuildInterpolatedCurve(pointsList)
-# doc.Objects.AddCurve(curve)
-# doc.Views.Redraw()
-#
-# PolySrf = rs.ObjectsByLayer('PolySrf')[0]
-# box = rs.BoundingBox(PolySrf)
-# for i, p in enumerate(box):
-#     doc.Objects.AddTextDot(str(i), p)
-#
-#
-# plane = rs.PlaneFromPoints(box[7], box[6], box[2])
-# xform = rs.XformPlanarProjection(plane)
-# rs.TransformObjects(PolySrf, xform, True)
-
-# rs.PlaneFromPoints(origin, x, y)
-# plane = rhutil.coerceplane(plane, True)
-# Transform.PlanarProjection(plane)
-
-
-# curves = CurveList()
-# for curve in rs.ObjectsByLayer('Layer 01'):
-#     curves.Add(rs.coerceline(curve))
-
-# curve_ids = map(lambda e: e.Id.ToString(), rs.ObjectsByLayer('Layer 01'))
-
-
-# breps = []
-# surfaces = []
-# tolerance = doc.ModelAbsoluteTolerance
-# for id in rs.ObjectsByLayer('Default'):  # rs.ObjectsByType(rs.filter.surface)
-#     breps.append((id, rs.coercebrep(id, True)))
-#
-# for id in rs.ObjectsByLayer('Default'):  # rs.ObjectsByType(rs.filter.surface)
-#     surfaces.append((id, rs.coercesurface(id, True)))
-#
-# # 1. Join Patches into PolySrf
-# # 2. DupBorder on PolySrf
-# # 3. Group patches where edge intersects border
-#
-# # for i, curve_id in enumerate(rs.ObjectsByLayer('Border::Outer')):  # rs.ObjectsByType(rs.filter.curve):
-# curve_id = rs.ObjectsByLayer('Border::Outer')[0]
-# group = rs.AddGroup()  # ('Sect' + str(i))
-# arr = []
-# curve = rs.coercecurve(curve_id, True)
-#
-# for obj in surfaces:
-#     surface_id, surface = obj
-#     intersections = Intersect.Intersection.CurveSurface(curve, surface, tolerance, tolerance)
-#     # result = rs.CurveSurfaceIntersection(curve, surface)
-#
-#     for intersection in intersections:
-#         for i in xrange(intersections.Count):
-#             if intersections[i].IsOverlap or intersections[i].IsPoint:
-#                 arr.append(surface_id)
-#
-# # for obj in breps:
-# #     brep_id, brep = obj
-# #
-# #     # result = rs.CurveBrepIntersect(curve_id, brep_id)
-# #     rc, out_curves, out_points = Intersect.Intersection.CurveBrep(curve, brep, tolerance)
-# #     if len(out_curves) > 0:
-# #         arr.append(brep_id)
-#
-# rs.AddObjectsToGroup(arr, group)
-# doc.Views.Redraw()
-# # rs.JoinSurfaces(arr, True)
-
-# rs.SplitBrep(brep, curve, False)
-# curves, points = result
-# for curve in curves:
-#     doc.Objects.AddCurve(rs.coercecurve(curve))
-
-# curves = CurveList()
-# for curve in rs.ObjectsByLayer('2D::Inter::visible::outline5'):
-#     curve = rs.coercecurve(curve, True)
-#     curves.Add(curve)
-#
-# Curve.JoinCurves(curves, 2.1 * tolerance, True)
-# doc.Objects.AddCurve(curve)
-
-
-    # for curve in rs.ObjectsByLayer('Layer 01'):  # rs.ObjectsByType(rs.filter.curve):
-        # result = rs.CurveBrepIntersect(curve, surface)
-        # result = rs.CurveSurfaceIntersection(curve, surface)
-        # if result:
-        #     curves = CurveList()
-        #     curves.Add(rs.coerceline(curve))
-        #     # rs.coercebrep(surface, True)
-        #     # BrepFace.Split(curve, doc.ModelAbsoluteTolerance)
-        #     rs.coercesurface(surface).Split(curves, doc.ModelAbsoluteTolerance)
-
-        # rs.SplitBrep(surface, curve, False)
-        # curves, points = result
-        # for curve in curves:
-        #     doc.Objects.AddCurve(rs.coercecurve(curve))
-
-
-    # rs.Command('Split ' + surface.Id.ToString(), + ' ,'.join(curve_ids))
-
-    # surface = rs.coercesurface(surface)
-
-    # result = surface.Split(curves, doc.ModelAbsoluteTolerance)
-
-    # doc.Objects.AddBrep(result)
-
-
-# doc.Views.Redraw()
-
-
-# import Rhino
-# Rhino.RhinoDoc
-# # view = rs.__viewhelper('Perspective')
-# viewport = doc.Views.ActiveView.ActiveViewport
-# viewport.ChangeToParallelProjection(True)
-#
-# arrObjects = rs.GetObjects("Select curves to draw", 4, True, True)
-# strView = rs.CurrentView
-# if rs.IsViewPerspective(strView):
-#     print Rhino.__dict__
-#     rs.XformPlanarProjection(cplane)
-#     arrXform = Rhino.ViewProjectionXform(strView)
-#     # Rhino.TransformObjects(arrObjects, arrXform, True)
-
-# import calabi_yau
-
-# import System.Enum
-#
-# print System.Enum.__dict__
-
-# Returns absolute path for module
-# print rs.__file__
-
-# doc.Views.ActiveView.ActiveViewport
-# rhino_object = rhutil.coercerhinoobject(surface_id, True, True)
-# layerNames = rs.LayerNames()
-#
-# for object in selected:
-#     object.Attributes.LayerIndex = layer
-#     object.CommitChanges()
-#
-# doc.Objects.ModifyAttributes(id, )
-# print obj.Attributes
-#
-# rs.EnableRedraw(False)

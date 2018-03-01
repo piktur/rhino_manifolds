@@ -1112,8 +1112,8 @@ class CurveBuilder(Builder):
             for e in ('U', 'V'):
                 layer = rs.AddLayer(util.layer('IsoCurves', 'Uniform', e), Color.Purple)
 
-                # for curve in self.IsoCurves[e]:
-                for curve in Curve.JoinCurves(self.IsoCurves['Uniform'][e]):
+                # Curve.JoinCurves(self.IsoCurves['Uniform'][e])
+                for curve in self.IsoCurves['Uniform'][e]:
                     id = doc.Objects.AddCurve(curve)
                     self.__rendered__(id)
                     rs.ObjectLayer(id, layer)
@@ -1456,12 +1456,12 @@ class SurfaceBuilder(CurveBuilder):
 
                 # Build IsoCurves from PointGrid. Do this for 'Div1' surfaces only.
                 # Make2d seems to perform better when given fewer objects properly joined.
-                for i, direction in enumerate(('U', 'V')):
-                    curves = self.BuildIsoCurves(srf, pointGrid, direction, 10)
-
-                    for collection in (self.IsoCurves[direction], self.Patch.IsoCurves[direction]):
-                        for curve in curves:
-                            collection.Add(curve)
+                # for i, direction in enumerate(('U', 'V')):
+                #     curves = self.BuildIsoCurves(srf, pointGrid, direction, 10)
+                #
+                #     for collection in (self.IsoCurves[direction], self.Patch.IsoCurves[direction]):
+                #         for curve in curves:
+                #             collection.Add(curve)
 
                 cache(srf, 'Div1')
 
@@ -1683,9 +1683,9 @@ class SurfaceBuilder(CurveBuilder):
     def BuildBoundingBox(self):
         self.BoundingBox = rs.BoundingBox(self.PolySurface['Div2'])
 
-        for i, pt in enumerate(self.BoundingBox):
+        for i, point in enumerate(self.BoundingBox):
             # id = doc.Objects.AddTextDot(str(i), p)
-            id = doc.Objects.AddPoint(pt)
+            id = doc.Objects.AddPoint(point)
             rs.ObjectLayer(id, 'BoundingBox')
 
         return self.BoundingBox
