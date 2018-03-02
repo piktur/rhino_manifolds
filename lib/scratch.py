@@ -9,6 +9,7 @@ from scriptcontext import doc, errorhandler
 import Rhino.Geometry.NurbsSurface as NurbsSurface
 import Rhino.Geometry.NurbsCurve as NurbsCurve
 import Rhino.Geometry.Point3d as Point3d
+import Rhino.Geometry.Point2d as Point2d
 import Rhino.Geometry.Mesh as Mesh
 import Rhino.Geometry.BrepFace as BrepFace
 import Rhino.Geometry.Brep as Brep
@@ -27,7 +28,6 @@ from Rhino.RhinoApp import RunScript
 import Rhino.Geometry.Surface as Surface
 
 import itertools
-
 
 # TODO
 # Brep.Reverse()
@@ -473,7 +473,7 @@ def OrderIsoCurvesByProximity():
                 rs.ObjectLayer(id, layer)
 
 
-def OrderPatches():
+def OrderPatchesByCurveContinuity():
     # start at k1, k2
     #     take the first curve within the patch
     #     iterate through all curves to the find the next by closest point
@@ -504,6 +504,8 @@ def OrderPatches():
 
         return closest
 
+    exampleCurves = {}
+
     # Direction seems to alternate so iterate every second patch targeting those patches
     # needing to be flipped.
     #
@@ -528,7 +530,7 @@ def OrderPatches():
                 # When n i odd some of the patches may straddle the centre making it difficult to
                 # determine the outermost edge.
                 # curve = FindPatchMaxCurve(curves2)[1]
-                for curve in (curves2.First, curves2.Last):
+                for i, curve in enumerate((curves2.First, curves2.Last)):
                     if not connection:
                         # We need to test connection at both ends because patch direction
                         # alternates.
@@ -551,52 +553,56 @@ def OrderPatches():
                             connection = p2, curve
                             patchOrder.append((p1, p2))
 
+                            if i == 1:
+                                exampleCurves[p2] = curves2.First
+                            else:
+                                exampleCurves[p2] = curve
+
                             break
 
     print(patchOrder)
 
-    order = [0]
     patches = len(builder.Patches)
+    loops = []
+
+    loop = [0]
     count = 0
 
-    for i in range(count):
-        p1, p2 = next(x for x in patchOrder if x[0] == order[-1])
+    for i in range(patches):
+        p1, p2 = next(x for x in patchOrder if x[0] == loop[-1])
         if count > 0 and p2 == 0:
             break
-        else:
-            order.append(p2)
-            count += 1
+        loop.append(p2)
+        count += 1
+    loops.append(loop)
 
-    # rem = []
+    # breaks = []
     # p1s = [p1 for (p1, p2) in patchOrder]
     # for e in p1s:
-    #     if e not in order:
-    #         rem.append(e)
+    #     if e not in loop:
+    #         breaks.append(e)
     #
-    # [(0, 3), (1, 7), (2, 0), (3, 4), (4, 7), (5, 8), (6, 3), (7, 8), (8, 2)]
-    # [0, 3, 4, 7, 8, 2, 7, 8, 3]
-    #
-    # for e in rem:
-    #     p1, p2 = next(x for x in patchOrder if x[0] == e)
-    #     order.append(p2)
+    # for n in breaks:
+    #     loop = [n]
+    #     count = 0
+    #     for i in range(patches):
+    #         p1, p2 = next(x for x in patchOrder if x[0] == loop[-1])
+    #         if count > 0 and p2 == 0:
+    #             break
+    #         loop.append(p2)
+    #         count += 1
+    #     loops.append(loop)
 
-    # # for i in range(count):
-    # while len(patchOrder) > 0:
-    #     p1, p2 = patchOrder.pop()
-    #     order.append(p2)
-    #     order.append(cont
-    #     for (p1, p2) in patchOrder:
-    #         cont = (p1, p2)
+    print loops
 
+    for i, p in enumerate(loops[0]):
+        try:
+            curve = exampleCurves[p]
+            centre = curve.PointAtNormalizedLength(0.5)
+            rs.AddTextDot(i, centre)
+        except:
+            pass
 
-    # for i, (p1, p2) in enumerate(patchOrder):
-    #     if i == 0:
-    #         order.append(p1)
-    #     else:
-    #         order.append(p2)
-    #         # order.append(patchOrder[p1][1])
-
-    print order
 
     # for i, (p1, p2) in enumerate(patchOrder):
     #     patchIndex, curve = p2
@@ -613,7 +619,147 @@ def OrderPatches():
     return patchOrder
 
 
-OrderPatches()
+# OrderPatchesByCurveContinuity()
+
+
+def OrderPatchesByPointOccurence():
+    pointCount = builder.n * (builder.n * (builder.U * builder.V))  # len(builder.Points)
+    patchPointCount = pointCount / builder.n
+    # builder.Analysis['U/2'] * builder.V
+    srfPointCount = (patchPointCount / builder.n) / 2
+
+
+def InterpCrvThroughPoints(srf, grid):
+    '''
+    We may want to increase the number of points to get a larger range of isocurve densities
+    '''
+    def build(arr, direction):
+        segments = CurveList()
+
+        for points in arr:
+            curve = srf.InterpolatedCurveOnSurface(points, 0.1)
+            segments.Add(curve)
+
+        return segments
+
+    U = CurveList()
+    V = CurveList()
+    SeamU = CurveList()
+    SeamV = CurveList()
+
+    for key in grid.iterkeys():
+        count = len(grid[key])
+
+        # All row/columns between first and last positions
+        for segment in build(grid[key][1:-1], key):
+            eval(key).Add(segment)
+
+        # row/columns at first and last positions
+        for segment in build(grid[key][0::(count - 1)], key):
+            eval('Seam' + key).Add(segment)
+
+    return (U, V), (SeamU, SeamV)
+
+
+def InterpCrvThroguhControlPoints(srf, grid):
+    pass
+    # V = []
+    # U = []
+    #
+    # U2 = []
+    # V2 = []
+    #
+    # U3 = []
+    # V3 = []
+    #
+    # MinDomainU, MaxDomainU = srf.Domain(0)
+    # MinDomainV, MaxDomainV = srf.Domain(1)
+    #
+    # for u in range(srf.Points.CountU):
+    #     u3 = float((float(u) + 1.0) / float(srf.Points.CountU)) * MaxDomainU
+    #     arr = Point3dList()
+    #     arr2 = []
+    #     arr3 = []
+    #
+    #     for v in range(srf.Points.CountV):
+    #         v3 = float((float(v) + 1.0) / float(srf.Points.CountV)) * MaxDomainV
+    #         arr.Add(srf.Points.GetControlPoint(u, v).Location)
+    #         arr2.append((u, v))
+    #         # arr3.append(Point2d(u3, v3))
+    #         arr3.append((u3, v3))
+    #
+    #     V.append(arr)
+    #     V2.append(arr2)
+    #     V3.append(arr3)
+    #
+    # for v in range(srf.Points.CountV):
+    #     v3 = float((float(v) + 1.0) / float(srf.Points.CountV)) * MaxDomainV
+    #     arr = Point3dList()
+    #     arr2 = []
+    #     arr3 = []
+    #
+    #     for u in range(srf.Points.CountU):
+    #         u3 = float((float(u) + 1.0) / float(srf.Points.CountU)) * MaxDomainU
+    #         arr.Add(srf.Points.GetControlPoint(u, v).Location)
+    #         arr2.append((u, v))
+    #         # arr3.append(Point2d(x=u3, y=v3))
+    #         arr3.append((u3, v3))
+    #
+    #     U.append(arr)
+    #     U2.append(arr2)
+    #     U3.append(arr3)
+    #
+    # log.write("\n" + str(U3))
+    # points = V[7]
+    # for point in points:
+    #     doc.Objects.AddPoint(point)
+
+    # srf = builder.Rendered['Surfaces']['Div1'][0]
+    # rs.AddInterpCrvOnSrfUV()
+    # rs.AddInterpCrvOnSrf(srf, V[2])
+    # Surface.InterpolatedCurveOnSurface()
+    # for points in U:
+    # curve = srf.InterpolatedCurveOnSurface(V[2], 1)
+    # doc.Objects.AddCurve(curve)
+
+
+
+
+    # BrepFace.InterpolatedCurveOnSurface()
+    # brep = Brep.TryConvertBrep(srf)
+    # brepFace = brep.Faces[0]
+
+    # pp = Point3dList()
+    # for u in range(srf.Points.CountU):
+    #     pp.Add(srf.Points.GetControlPoint(u, 10).Location)
+
+    # a = builder.Patches[0].Points[0]
+    # b = builder.Patches[0].Points[30]
+    #
+    # a = builder.Patches[0].Points[300]
+    # b = builder.Patches[0].Points[320]
+    #
+    # a = srf.Points.GetControlPoint(0, 0).Location
+    # b = srf.Points.GetControlPoint(0, 28).Location
+
+
+
+    # a = grid['V'][0].First
+    # b = grid['V'][0].Last
+    #
+    # rs.AddTextDot('a', a)
+    # rs.AddTextDot('b', b)
+    # curve = srf.InterpolatedCurveOnSurface(V[2], 0.1)
+    # print curve
+    # doc.Objects.AddCurve(curve)
+
+    # for row in V:
+    #     curve = srf.InterpolatedCurveOnSurface(row, 0.1)
+    #     doc.Objects.AddCurve(curve)
+
+    # curve = brepFace.InterpolatedCurveOnSurface((a, b), 0.000001)
+    # print(curve)
+    # doc.Objects.AddCurve(curve)
 
 
 def SeperateUVFromExtractWireframe(srf):
@@ -688,9 +834,45 @@ def RenderCurves(curves):
         doc.Objects.AddCurve(curve)
 
 
-for n in range(2):
-    srf = builder.Surfaces['Div1'][n]
+U = CurveList()
+V = CurveList()
 
+
+# for n in range(4):
+for patch in builder.Patches:
+    # patch = builder.Patches[n]
+    # for n2 in range(2):
+    for i, srf in enumerate(patch.Surfaces['Div1']):
+        # srf = patch.Surfaces['Div1'][n2]
+        grid = patch.PointGrid['Div1'][i]
+
+        isoCurves, seams = InterpCrvThroughPoints(srf, grid)
+        _u, _v = isoCurves
+        _seamU, seamV = seams
+
+        # Remove first and last, JoinCurves fails when duplicates exist at surface seams.
+        # CountU = _u.Count
+        # CountV = _v.Count
+        # U.AddRange(_u.GetRange(1, CountU - 2))
+        # V.AddRange(_v.GetRange(1, CountV - 2))
+        U.AddRange(_u)
+        V.AddRange(_v)
+
+for i, direction in enumerate(('U', 'V')):
+    curves = []
+    for curve in Curve.JoinCurves(eval(direction), doc.ModelAbsoluteTolerance, False):
+        # curve.MakeClosed(doc.ModelAbsoluteTolerance)
+        curves.append(curve)
+
+    for curve in curves:
+        id = doc.Objects.AddCurve(curve)
+        builder.__rendered__(id)
+        builder.Rendered['IsoCurves'][direction].append(id)
+        rs.ObjectLayer(id, '::'.join(('IsoCurves', direction)))
+
+
+for n in range(2):
+    pass
     # REPORT :
     #   * Matches Wireframe
     #   * Need to unify surface directions in order to decrease/increase wire count
@@ -710,8 +892,12 @@ for n in range(2):
 #   *
 # SeperateUVFromExtractWireframe()
 
+# for patch in builder.Patches:
+#     srf = patch.Surfaces['Div1'][0]
+#     grid = patch.PointGrid['Div1'][0]
 
 patch = builder.Patches[0]  # for patch in builder.Patches:
+
 for n, srf in enumerate(patch.Surfaces['Div1']):
     pass
     # REPORT :
@@ -770,3 +956,81 @@ def Make2d():
     #   then find the nearest curve and trim from end to intersection
 
 # Make2d()
+
+
+def FlipCurve(target, guide):
+    '''
+    TODO
+        see examples/grasshopper/curve/flip.cs
+    '''
+    pass
+
+
+def FlipSurface(target, guide):
+    '''
+    see examples/grasshopper/surface/flip.cs
+
+    Flip the normals of a surface based on local or remote geometry
+
+    Parameters:
+        target : Rhino.Geometry.BrepFace
+        guide : Rhino.Geometry.BrepFace
+    '''
+    pass
+    # import Grasshopper.Kernel
+    # import Grasshopper.Kernel.Types
+    # import Rhino.Geometry
+    # import SurfaceComponents.My.Resources
+    # import System
+    # import System.Drawing
+    #
+    # pass
+    #
+    # flag = False
+    # num = 0.0
+    # num1 = 0.0
+    # DomainU = target.Domain(0)
+    # DomainV = target.Domain(1)
+    # StepU = DomainU[1] / 3 * target.SpanCount(0)
+    # StepV = DomainV[1] / 3 * target.SpanCount(1)
+    # num4 = double.MaxValue
+    # num5 = double.NaN
+    # num6 = double.NaN
+    # num7 = double.NaN
+    # num8 = double.NaN
+    # MinU = DomainU[0]
+    # MaxU = DomainU[1]
+    # CountU = 0
+    #
+    # if ((StepU >= 0 ? MinU > MaxU : MinU < MaxU)):
+    #     break
+    # else:
+    #     MinV = DomainV[0]
+    #     MaxV = DomainV[1]
+    #     flag2 = StepV >= 0
+    #     CountV = MinV
+    #
+    # if ((flag2 ? MinV > MaxV : MinV < MaxV)):
+    #     break
+    # else:
+    #     point3d = target.PointAt(min, MinV)
+    #
+    #     if guide.ClosestPoint(point3d, num, num1):
+    #         num13 = point3d.DistanceTo(guide.PointAt(num, num1))
+    #         if (num13 < num4):
+    #             num4 = num13
+    #             num5 = min
+    #             num6 = MinV
+    #             num7 = num
+    #             num8 = num1
+    #
+    # CountV += StepV
+    # CountU += StepU
+    #
+    # if num7:
+    #     Vector3d vector3d = target.NormalAt(CountU, num6)
+    #     Vector3d vector3d1 = guide.NormalAt(num7, num8)
+    #     flag = vector3d.IsParallelTo(vector3d1, 1.5707963267949) == -1
+    # else:
+    #     flag = false
+    # return flag

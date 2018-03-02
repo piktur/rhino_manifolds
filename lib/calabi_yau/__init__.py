@@ -316,10 +316,10 @@ class Builder:
         U : int
         V : int
         Degree : int
-        UDegree : int
-        VDegree : int
-        UCount : int
-        VCount : int
+        DegreeU : int
+        DegreeV : int
+        CountU : int
+        CountV : int
         MinU : float
         MidU : float
         MaxU : float
@@ -348,8 +348,8 @@ class Builder:
     __slots__ = ['n', 'Alpha', 'Step', 'Scale', 'Offset',
                  'ndigits',
                  'U', 'V',
-                 'Degree', 'UDegree', 'VDegree',
-                 'UCount', 'VCount',
+                 'Degree', 'DegreeU', 'DegreeV',
+                 'CountU', 'CountV',
                  'MinU', 'MidU', 'MaxU', 'StepU', 'CentreU',
                  'MinV', 'MidV', 'MaxV', 'StepV', 'CentreV',
                  'RngK', 'RngU', 'RngV',
@@ -391,10 +391,10 @@ class Builder:
         # [Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
         # Performance reduced if > 55
         self.V = self.U = 55  # 11, 21, 55, 107, 205 [110]
-        self.Degree = self.VDegree = self.UDegree = 3
+        self.Degree = self.DegreeV = self.DegreeU = 3
 
         # Note: Polysurface created if U and V degrees differ.
-        self.VCount = self.UCount = 0
+        self.CountV = self.CountU = 0
 
         self.MinU = -1
         self.MaxU = 1
@@ -462,12 +462,12 @@ class Builder:
             'k1.in': [],
             'k2.on': [self.AddPatch],
             'k2.in': [],
-            'a.on': [self.IncrementUCount],
+            'a.on': [self.IncrementCountU],
             'a.in': [],
-            'b.on': [self.BuildPoint, self.IncrementVCount],
+            'b.on': [self.BuildPoint, self.IncrementCountV],
             'b.in': [],
             'b.out': [],
-            'a.out': [self.ResetVCount],
+            'a.out': [self.ResetCountV],
             'k2.out': [],
             'k1.out': []
         }
@@ -609,17 +609,17 @@ class Builder:
     def OffsetV(self, steps=1.0):
         return self.Analysis['V'] == round(self.MidV + (self.StepV * steps), 2)
 
-    def ResetUCount(self, *args):
-        self.UCount = 0
+    def ResetCountU(self, *args):
+        self.CountU = 0
 
-    def ResetVCount(self, *args):
-        self.VCount = 0
+    def ResetCountV(self, *args):
+        self.CountV = 0
 
-    def IncrementVCount(self, *args):
-        self.VCount += 1
+    def IncrementCountV(self, *args):
+        self.CountV += 1
 
-    def IncrementUCount(self, *args):
-        self.UCount += 1
+    def IncrementCountU(self, *args):
+        self.CountU += 1
 
     def AddPatch(self, *args):
         '''
@@ -943,7 +943,7 @@ class CurveBuilder(Builder):
         ])
         listeners['k2.out'].extend([
             self.BuildCurves,
-            self.ResetUCount
+            self.ResetCountU
         ])
 
         return listeners
@@ -1340,7 +1340,7 @@ class SurfaceBuilder(CurveBuilder):
                 self.BuildSurface(*args)  # Finalise current subdivision
                 self.AddSurface(*args)  # Begin next subdivision
                 self.__points__ = Point3dList(self.Points[-self.Analysis['U/2']:])
-                self.IncrementUCount()
+                self.IncrementCountU()
 
     def PlotSurface(self, *args):
         k1, k2, a, b = args
@@ -1401,7 +1401,7 @@ class SurfaceBuilder(CurveBuilder):
         TODO Add `Weight` to `self.Patch.Analysis['centre']` control point
 
         NurbsSurface.CreateThroughPoints will raise "Invalid U and V counts" if
-        `Point3dList != self.UCount * self.VCount`
+        `Point3dList != self.CountU * self.CountV`
 
         ```
             cp = srf.Points.GetControlPoint(0, self.Analysis['V/2'])
@@ -1416,17 +1416,17 @@ class SurfaceBuilder(CurveBuilder):
             self.Breps[key].append(brep)
             self.Patch.Breps[key].append(brep)
 
-        def PointGrid(points, UCount, VCount):
+        def PointGrid(points, CountU, CountV):
             count = len(points)
 
-            U = [[] for n in range(VCount)]
-            V = []  # [] for n in range(UCount)
+            U = [[] for n in range(CountV)]
+            V = []  # [] for n in range(CountU)
 
-            for n in range(0, count, VCount):
-                arr = points.GetRange(n, VCount)
+            for n in range(0, count, CountV):
+                arr = points.GetRange(n, CountV)
                 V.append(arr)
 
-            for n in range(VCount):
+            for n in range(CountV):
                 for arr in V:
                     U[n].append(arr[n])
 
@@ -1436,20 +1436,20 @@ class SurfaceBuilder(CurveBuilder):
             points = getattr(self, char)
 
             if points.Count > 0:
-                UCount = self.Analysis['U/2']
-                VCount = self.V
+                CountU = self.Analysis['U/2']
+                CountV = self.V
 
                 pointGrid = {}
                 self.Patch.PointGrid['Div1'].append(pointGrid)
-                for e in zip(('U', 'V'), PointGrid(points, UCount, VCount)):
+                for e in zip(('U', 'V'), PointGrid(points, CountU, CountV)):
                     pointGrid[e[0]] = e[1]
 
                 srf = NurbsSurface.CreateThroughPoints(
                     points,
-                    UCount,
-                    VCount,
-                    self.UDegree,
-                    self.VDegree,
+                    CountU,
+                    CountV,
+                    self.DegreeU,
+                    self.DegreeV,
                     False,
                     False
                 )
@@ -1468,20 +1468,20 @@ class SurfaceBuilder(CurveBuilder):
         points = getattr(self, 'C')
 
         if points.Count > 0:
-            UCount = self.U
-            VCount = self.V
+            CountU = self.U
+            CountV = self.V
 
             pointGrid = {}
             self.Patch.PointGrid['Div0'].append(pointGrid)
-            for e in zip(('U', 'V'), PointGrid(points, UCount, VCount)):
+            for e in zip(('U', 'V'), PointGrid(points, CountU, CountV)):
                 pointGrid[e[0]] = e[1]
 
             srf = NurbsSurface.CreateThroughPoints(
                 points,
-                UCount,
-                VCount,
-                self.UDegree,
-                self.VDegree,
+                CountU,
+                CountV,
+                self.DegreeU,
+                self.DegreeV,
                 False,
                 False
             )
@@ -1500,20 +1500,20 @@ class SurfaceBuilder(CurveBuilder):
                 points = getattr(self, 'S' + str(char) + '_' + str(i))
 
                 if points.Count > 0:
-                    UCount = self.Analysis['U/2']
-                    VCount = getattr(self, 'V' + str(char) + '_' + str(i))
+                    CountU = self.Analysis['U/2']
+                    CountV = getattr(self, 'V' + str(char) + '_' + str(i))
 
                     pointGrid = {}
                     self.Patch.PointGrid['Div2'].append(pointGrid)
-                    for e in zip(('U', 'V'), PointGrid(points, UCount, VCount)):
+                    for e in zip(('U', 'V'), PointGrid(points, CountU, CountV)):
                         pointGrid[e[0]] = e[1]
 
                     srf = NurbsSurface.CreateThroughPoints(
                         points,
-                        UCount,
-                        VCount,
-                        self.UDegree,
-                        self.VDegree,
+                        CountU,
+                        CountV,
+                        self.DegreeU,
+                        self.DegreeV,
                         False,
                         False
                     )
@@ -1549,7 +1549,7 @@ class SurfaceBuilder(CurveBuilder):
                 for i2, srf in enumerate(patch.Surfaces[e]):
                     if e == 'Div1':
                         if i2 == 0:
-                            __conf__.Log.write(str(srf.Points.GetControlPoint(1,1)))
+                            __conf__.Log.write(str(srf.Points.GetControlPoint(1, 1)))
                             # points = []
                             #
                             # for point in grid['V'][0]:
