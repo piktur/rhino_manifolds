@@ -155,22 +155,8 @@ def Normals():
         # log.write(str(direction.X))
 
 
-def Analyse(srf):
-    _ = {}
-    _['U'] = srf.SpanCount(0)  # srf.Points.CountU
-    _['V'] = srf.SpanCount(1)  # srf.Points.CountV
-    # _[''] = srf.OrderU
-    # _[''] = srf.OrderV
-    _['minU'], _['maxU'] = srf.Domain(1)
-    _['minV'], _['maxV'] = srf.Domain(0)
-    _['stepU'] = fabs(_['maxU'] - _['minU']) / float(_['U'] - 1)  # * 2.0  # _['maxU'] / 28.0
-    _['stepV'] = fabs(_['maxV'] - _['minV']) / float(_['V'] - 1)  # * 2.0  # _['maxV'] / 55.0
-
-    return _
-
-
 def ExtractIsoCurvesFromBaseCurveDivisions(srf):
-    _ = Analyse(srf)
+    _ = builder.AnalyseSurface(srf)
 
     if i == 0:
         UDiv = Point3dList()
@@ -214,7 +200,7 @@ def ExtractIsoCurvesFromBaseCurveDivisions(srf):
 
 
 def ExtractIsoCurvesForPair(srf, n):
-    _ = Analyse(srf)
+    _ = builder.AnalyseSurface(srf)
     UDiv = None
     VDiv = None
 
@@ -259,7 +245,7 @@ def ExtractIsoCurvesForPair(srf, n):
 def ExtractIsoCurvesByDividingSurfaceDomain(srf):
     # NURBS geometry parameter space divisions are not equivalent to length.
     # https://ieatbugsforbreakfast.wordpress.com/2013/09/27/curve-parameter-space/
-    _ = Analyse(srf)
+    _ = builder.AnalyseSurface(srf)
     U = CurveList()
     V = CurveList()
 
@@ -297,36 +283,6 @@ def ExtractIsoCurvesAtSrfControlPoints(srf):
             U.Add(curve)
 
     return U, V
-
-
-def BuildReferenceSphere(centre=(0, 0, 0), radius=200):
-    center = rs.coerce3dpoint(centre)
-    return Sphere(center, radius)
-
-
-def Dimensions():
-    box = builder.BoundingBox
-    origin = box[0]
-
-    dim = [(origin - box[i]).Length for i in (1, 3, 4)]
-    x, y, z = dim
-    # dim.sort()
-
-    diag = [(box[a] - box[b]).Length for (a, b) in itertools.combinations((1, 3, 4), 2)]
-    xy, xz, yz = diag
-    # diag.sort()
-
-    diameter = max(diag)
-    radius = diameter / 2.0
-
-    return diameter, radius, dim, diag
-
-
-def BoxAnalysis():
-    box = Brep.CreateFromBox(builder.BoundingBox)
-
-    print Geometry.AreaMassProperties.Compute(box)
-    print Geometry.VolumeMassProperties.Compute(box)
 
 
 def SampleSurfacePoints(srf):
@@ -368,9 +324,7 @@ def OrientSurfacesToReference(builder):
         return a.CompareTo(b)
         '''
 
-    diameter, radius, dim, diag = Dimensions()
-
-    ref = BuildReferenceSphere((0, 0, 0), radius)
+    ref = builder.BuildReferenceSphere((0, 0, 0), builder.Analysis['radius'])
     refBrep = ref.ToBrep()
     id = doc.Objects.AddSphere(ref)
 
@@ -481,9 +435,8 @@ def OrderPatchesByCurveContinuity():
     #         take this new found patch and repeat until we have gone through all patches
 
     tolerance = 0.1  # doc.ModelAbsoluteTolerance
-    diameter, radius, dim, diag = Dimensions()
 
-    ref = BuildReferenceSphere((0, 0, 0), radius)
+    ref = builder.BuildReferenceSphere((0, 0, 0), builder.Analysis['radius'])
     refBrep = ref.ToBrep()
 
     patchOrder = []
@@ -629,38 +582,6 @@ def OrderPatchesByPointOccurence():
     srfPointCount = (patchPointCount / builder.n) / 2
 
 
-def InterpCrvThroughPoints(srf, grid):
-    '''
-    We may want to increase the number of points to get a larger range of isocurve densities
-    '''
-    def build(arr, direction):
-        segments = CurveList()
-
-        for points in arr:
-            curve = srf.InterpolatedCurveOnSurface(points, 0.1)
-            segments.Add(curve)
-
-        return segments
-
-    U = CurveList()
-    V = CurveList()
-    SeamU = CurveList()
-    SeamV = CurveList()
-
-    for key in grid.iterkeys():
-        count = len(grid[key])
-
-        # All row/columns between first and last positions
-        for segment in build(grid[key][1:-1], key):
-            eval(key).Add(segment)
-
-        # row/columns at first and last positions
-        for segment in build(grid[key][0::(count - 1)], key):
-            eval('Seam' + key).Add(segment)
-
-    return (U, V), (SeamU, SeamV)
-
-
 def InterpCrvThroguhControlPoints(srf, grid):
     pass
     # V = []
@@ -769,7 +690,7 @@ def SeperateUVFromExtractWireframe(srf):
     # Then Add/Remove as required
     pass
 
-    # Maybe just generate the densest wireframe and then reduce
+    # Generate a denser wireframe and select sub samples from it.
     for i in range(1, 5, 1):
         ids = builder.Rendered['PolySurface']['Div1']
         layer = rs.AddLayer('::'.join(('Wireframe', str(i))))
@@ -834,43 +755,6 @@ def RenderCurves(curves):
         doc.Objects.AddCurve(curve)
 
 
-U = CurveList()
-V = CurveList()
-
-
-# for n in range(4):
-for patch in builder.Patches:
-    # patch = builder.Patches[n]
-    # for n2 in range(2):
-    for i, srf in enumerate(patch.Surfaces['Div1']):
-        # srf = patch.Surfaces['Div1'][n2]
-        grid = patch.PointGrid['Div1'][i]
-
-        isoCurves, seams = InterpCrvThroughPoints(srf, grid)
-        _u, _v = isoCurves
-        _seamU, seamV = seams
-
-        # Remove first and last, JoinCurves fails when duplicates exist at surface seams.
-        # CountU = _u.Count
-        # CountV = _v.Count
-        # U.AddRange(_u.GetRange(1, CountU - 2))
-        # V.AddRange(_v.GetRange(1, CountV - 2))
-        U.AddRange(_u)
-        V.AddRange(_v)
-
-for i, direction in enumerate(('U', 'V')):
-    curves = []
-    for curve in Curve.JoinCurves(eval(direction), doc.ModelAbsoluteTolerance, False):
-        # curve.MakeClosed(doc.ModelAbsoluteTolerance)
-        curves.append(curve)
-
-    for curve in curves:
-        id = doc.Objects.AddCurve(curve)
-        builder.__rendered__(id)
-        builder.Rendered['IsoCurves'][direction].append(id)
-        rs.ObjectLayer(id, '::'.join(('IsoCurves', direction)))
-
-
 for n in range(2):
     pass
     # REPORT :
@@ -886,6 +770,14 @@ for n in range(2):
     # U, V = ExtractIsoCurvesByDividingSurfaceDomain(srf)
     # RenderCurves(U)
     # RenderCurves(V)
+
+
+# for n in range(4):
+for patch in builder.Patches:
+    # patch = builder.Patches[n]
+    # for n2 in range(2):
+    for i, srf in enumerate(patch.Surfaces['Div1']):
+        pass
 
 
 # REPORT :
@@ -955,6 +847,8 @@ def Make2d():
     # does the meet another. it should so if it doesn't
     #   then find the nearest curve and trim from end to intersection
 
+    # We should then join the curves, with a reasonable tolerance. Not too high or too low.
+
 # Make2d()
 
 
@@ -965,6 +859,11 @@ def FlipCurve(target, guide):
     '''
     pass
 
+
+'''
+TODO
+    WHY DO't we use quarter dome to measure closest point that should give us a better indication of position
+'''
 
 def FlipSurface(target, guide):
     '''
@@ -1034,3 +933,36 @@ def FlipSurface(target, guide):
     # else:
     #     flag = false
     # return flag
+
+
+def ExtendPrimitiveRhinoClasses():
+    '''
+    https://wiki.python.org/moin/HowTo/Sorting#Odd_and_Ends
+
+    The below code demonstrates how to extend an exisiting class defintion attributes dynamically. This approach works from the console, though not in Rhino -- `dictproxy` does not allow assignment
+    '''
+    def __eq__(self, other):
+        return self.PointAtStart == other.PointAtStart and \
+        self.PointAtEnd == other.PointAtEnd
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        return
+
+    def __le__(self, other):
+        return
+
+    def __gt__(self, other):
+        return
+
+    def __ge__(self, other):
+        return
+
+    Curve.__dict__['__eq__'] = __eq__
+    Curve.__dict__['__ne__'] = __ne__
+    Curve.__dict__['__lt__'] = __lt__
+    Curve.__dict__['__le__'] = __le__
+    Curve.__dict__['__gt__'] = __gt__
+    Curve.__dict__['__ge__'] = __ge__
