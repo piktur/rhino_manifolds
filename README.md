@@ -1,5 +1,10 @@
 # [Calabi Yau](https://bitbucket.org/kunst_dev/snippets)
 
+## TODO
+
+* [Unify Surface UV and Normal direction](http://www.rhinoscript.org/forum/1/60)
+    I assume you are talking 2D here: you can use CurveCurvature() to get curvature information for a specific point on a curve. If you take the cross product of the tangent vector and the curvature vector, the resulting vector faces in negative or positive z direction, depending on you clockwise or counterclockwise curve direction.
+
 ## Review
 
 * 1 Degree Surfaces will often span multiple divisions. `ConvertToBezier` with Degree > 2 Nurbs Surfaces

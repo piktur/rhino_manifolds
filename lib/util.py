@@ -65,9 +65,9 @@ def layer(*args):
     return '::'.join([str(e) for e in args])
 
 
-def chunk(list, size):
+def chunk(arr, size):
     '''
     Yield successive chunks of `size` from `list`.
     '''
-    for i in range(0, len(list), size):
-        yield list[i:i + size]
+    for i in range(0, len(arr), size):
+        yield arr[i:i + size]

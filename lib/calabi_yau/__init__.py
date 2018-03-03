@@ -25,69 +25,135 @@ reload(export)
 
 
 class Config:
-    __slots__ = ['IsoCurves', 'Log', 'Div', 'PolySurfaces']
+    __slots__ = ['Log', 'Div', 'Defaults', '__density__']
+
+    def __init__(self, **kwargs):
+        self.Log = open(kwargs['log'], 'w')
+        self.Div = kwargs['div']
+        self.Defaults = kwargs['defaults']
+        self.__density__ = {i: n for i, n in enumerate(kwargs['density'])}
+
+    def GetNormalisedDensity(self, i):
+        return self.__density__[i]
+
+    def dig(self, attr, *args):
+        '''
+        Retrieves value from deeply nested attribute.
+
+        Example:
+            ```
+            >>> __conf__.isOn('Div', 's', 0, 0)
+            'S_0'
+
+            >>> __conf__.isOn('Div', 's', 0)
+            ['S_0']
+
+            >>> __conf__.isOn(None)
+            None
+        '''
+        try:
+            attr = getattr(self, attr)
+        except TypeError, AttributeError:
+            pass
+
+        for i, key in enumerate(args):
+            if type(attr) == dict and attr.has_key(key):
+                attr = attr[key]
+
+                if i == len(args) - 1:
+                    return attr
+            else:
+                try:
+                    return attr[key]
+                except IndexError:
+                    pass
+
+    def isOn(self, attr, *args):
+        return self.dig(*args)
+
+    def isOff(self, *args):
+        return not self.dig(*args)
 
     @staticmethod
-    def __div__(*args):
+    def div1(prefix, *n):
         '''
-        Returns variable names for surface divisions
+        Returns list<str> representing divisions
+        '''
+        return [''.join((prefix, '_', str(i))) for i in range(*n)]
+
+    @staticmethod
+    def div2(*args):
+        '''
+        Returns list<str> representing surface divisions per 15 degree increment of theta
         '''
         arr = []
-        maxV = int(rmath.ToDegrees(pi / 2.0))  # 90 degrees
-        stepV = int(rmath.ToDegrees(pi / 12.0))  # 15 degrees
+        maxV = int(round(rmath.ToDegrees(pi / 2.0), 1))  # 90 degrees
+        stepV = int(round(rmath.ToDegrees(pi / 12.0), 1))  # 15 degrees
+
         for u in range(2):  # xi
             for v in range(0, maxV + stepV, stepV):  # theta
                 arr.append(''.join([str(e) for e in args + (v, '_', u)]))
 
         return arr
 
-    def __init__(self, **kwargs):
-        self.IsoCurves = kwargs['isoCurves']
-        self.Log = open(kwargs['log'], 'w')
-        self.Div = ['Div' + str(n) for n in kwargs['div']]
-        self.PolySurfaces = ['Div' + str(n) for n in kwargs['polySurface']]
-
-        self.Div = {}
-        self.Div['C'] = []
-        self.Div['M'] = []
-        self.Div['S'] = []
-        self.Var['C'] = kwargs
-        self.Var['S'] = kwargs
-        self.Var['M'] = kwargs
-
-        for char in ('S', 'U', 'V'):
-            self.__div__(char)
-
-    @staticmethod
-    def RDiv():
-        return ['R' + str(i) for i in range(3)]
-
-    @staticmethod
-    def XDiv():
-        return ['X' + str(i) for i in range(10)]
-
 
 __conf__ = Config(
-    isoCurves=False,
     log='./log.txt',
-    div=[1, 2],
-    polySurface=[1]
+    defaults={
+        'n': 5,
+        'deg': 0.25,
+        'density': 2,
+        'scale': 100,
+        'offset': (0, 0)
+    },
+    density=(11, 21, 55, 107, 205),  # 110
+    # Prepare variable names per division for each Geometry collection
+    div={
+        'c': {  # `CurveBuilder`
+            2: {
+                'R': Config.div1('R', 3),
+                'X': Config.div1('X', 10)
+                # 'U': Config.div1('U', 55),
+                # 'V': Config.div1('V', 55)
+            }
+        },
+        'm': {  # `MeshBuilder`
+            1: Config.div1('M', 2)
+        },
+        's': {  # `SurfaceBuilder`
+            # 0: Config.div1('S', 1),
+            1: Config.div1('S', 1, 3),
+            2: {
+                k: v for (k, v) in zip(
+                    ('S', 'U', 'V'),
+                    [Config.div2(e) for e in ('S', 'U', 'V')]
+                )
+            }
+        },
+        'S': [1]  # `SurfaceBuilder.PolySurfaces`
+    },
 )
 
 
 def GetUserInput():
     n = rs.GetInteger('n', 5, 1, 10)
     alpha = rs.GetReal('Degree', 0.25, 0.0, 2.0)
-    density = rs.GetReal('Density', 0.1, 0.01, 0.4)
+    density = rs.GetReal('UV Density', 2, 0, 4)
     scale = rs.GetInteger('Scale', 100, 1, 100)
     offset = rs.GetInteger('Offset', 0, -10, 10) * 300
-    offset = (offset, offset)
-    builder = rs.GetInteger('Type', 4, 1, 5)
+    builder = rs.GetInteger('Geometry', 4, 1, 5)
 
-    return n, alpha, density, scale, offset, builder
+    return {
+        'n': n,
+        'deg': alpha,
+        'density': density,
+        'scale': scale,
+        'offset': (offset, offset),
+        'type': builder
+    }
 
 
-def GenerateGrid(density=0.1, scale=100, type=4):
+def GenerateGrid(density=2, scale=100, type=4):
     '''
     Generate 10 x 10 grid
     '''
@@ -115,7 +181,7 @@ def GenerateGrid(density=0.1, scale=100, type=4):
         doc.Views.Redraw()
 
 
-def Batch(dir, density=0.1, scale=100, type=4):
+def Batch(dir, density=2, scale=100, type=4):
     queue = {}
     offset = scale * 3
     alpha = 0.25  # rs.frange(0.1, 1.0, 0.1)
@@ -130,7 +196,7 @@ def Batch(dir, density=0.1, scale=100, type=4):
     return queue
 
 
-def Run(*args):
+def Run(type=4, **kwargs):
     '''
     Parameters:
         n : int
@@ -145,10 +211,8 @@ def Run(*args):
             [4] generate Rhino.Geometry.Surface
     '''
     if rs.ContextIsRhino():  # rs.ContextIsGrasshopper()
-        args = GetUserInput()
-
-    # n, deg, step, scale, offset, type = args
-    type = args[-1]
+        kwargs = GetUserInput()
+        type = kwargs.pop('type')
 
     if type == 5:
         pass
@@ -158,9 +222,11 @@ def Run(*args):
         type = __builders__[type]
 
         # Cache builder instance
-        sticky['builder'] = type(*args[:-1])
-        sticky['builder'].Build()
-        sticky['builder'].Finalize()
+        builder = sticky['builder'] = type(**kwargs)
+        builder.Build()
+        builder.AddLayers(builder.Layers)
+        builder.Render()
+        builder.Finalize()
 
 
 PointAnalysis = {'Seq': {}}
@@ -286,24 +352,29 @@ def CalculatePoint(n, angle, k1, k2, xi, theta):
 class Patch:
     '''
     Attributes:
+        Analysis : dict
+        Brep : Rhino.Geometry.Brep
+        Breps : list<Rhino.Geometry.Brep
+        CalabiYau : Builder
+        Curves : list<Rhino.Geometry.NurbsCurve>
+        Mesh : Rhino.Geometry.Mesh
+        Meshes : list<Rhino.Geometry.Mesh>
+        Phase : list
         Points : Rhino.Collections.Point3dList
+        PointGrid : list
         Surface : Rhino.Geometry.NurbsSurface
         Surfaces : list<Rhino.Geometry.NurbsSurface>
-        Brep : Rhino.Geometry.Brep
-        MeshA : Rhino.Geometry.Mesh
-        MeshB : Rhino.Geometry.Mesh
-        Edges : list<Rhino.Geometry.NurbsCurve>
     '''
     __slots__ = [
-        'CalabiYau',
-        'Phase'
         'Analysis',
-        'Points',
-        'Surface', 'Surfaces',
         'Brep', 'Breps',
-        'MeshA', 'MeshB',
-        'Edges',
-        'Isocurves'
+        'CalabiYau',
+        'Curves'
+        'Mesh', 'Meshes',
+        'Phase',
+        'Points',
+        'PointGrid',
+        'Surface', 'Surfaces'
     ]
 
     def __init__(self, cy, phase):
@@ -311,17 +382,20 @@ class Patch:
         self.Phase = phase
         self.Analysis = {}
         self.Points = Point3dList()
+        self.Meshes = {}
         self.Surfaces = {}
         self.Breps = {}
         self.PointGrid = {}
-        for div in __conf__.Div:
+
+        for (group, divisions) in __conf__.Div['m'].iteritems():
+            self.Meshes[group] = {}
+            for div in divisions:
+                self.Meshes[group][div] = Mesh()
+
+        for div in __conf__.Div['s'].keys():
             self.Surfaces[div] = []
             self.Breps[div] = []
             self.PointGrid[div] = []
-        self.IsoCurves = {'U': CurveList(), 'V': CurveList()}
-        self.IsoCurves['Uniform'] = {'U': CurveList(), 'V': CurveList()}
-        # self.Edges = []
-        # self.Brep = None
 
 
 class Builder:
@@ -393,8 +467,8 @@ class Builder:
                  'U', 'V',
                  'Degree', 'DegreeU', 'DegreeV',
                  'CountU', 'CountV',
-                 'MinU', 'MidU', 'MaxU', 'StepU', 'CentreU',
-                 'MinV', 'MidV', 'MaxV', 'StepV', 'CentreV',
+                 'MinU', 'MidU', 'MaxU', 'StepU',
+                 'MinV', 'MidV', 'MaxV', 'StepV',
                  'RngK', 'RngU', 'RngV',
                  'Analysis',
                  'Rendered',
@@ -404,18 +478,16 @@ class Builder:
                  'IsoCurveDensity',
                  '__palette__']
 
-    def __init__(self, n=1, deg=1.0, step=0.1, scale=1, offset=(0, 0)):
+    def __init__(self, n=1, deg=1.0, density=2, scale=1, offset=(0, 0), **kwargs):
         '''
         Parameters:
             n : int
             deg : float
-            step : float
             scale : int
             offset : int
         '''
         self.n = n
         self.Alpha = deg * pi
-        self.Step = step
         self.Scale = scale
         self.Offset = offset
 
@@ -425,14 +497,17 @@ class Builder:
         ]
 
         # Floating point precision.
-        # Increase when self.U and/or self.V increases
+        # Increase when `self.U` and/or `self.V` increases
         self.ndigits = 5
 
-        # NOTE `U` -- "xi" must be odd to guarantee passage through fixed points at
-        # (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0)
-        # [Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
-        # Performance reduced if > 55
-        self.V = self.U = 21  # 11, 21, 55, 107, 205 [110]
+        # Note:
+        #   `U` -- "xi" must be odd to guarantee passage through fixed points at
+        #   (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0)
+        #
+        #   Performance reduced if > 55
+        # See:
+        #   [Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+        self.V = self.U = __conf__.GetNormalisedDensity(density)
         self.Degree = self.DegreeV = self.DegreeU = 3
 
         # Note: Polysurface created if U and V degrees differ.
@@ -452,16 +527,13 @@ class Builder:
         # deduct 1 to accomodate `rs.frange` zero offset
         self.StepV = fabs(self.MaxV - self.MinV) / (self.V - 1.0)
 
-        self.RngK = rs.frange(0, n - 1, 1)  # range(self.n)
+        self.RngK = rs.frange(0, n - 1, 1)
         self.RngU = rs.frange(self.MinU, self.MaxU, self.StepU)
         self.RngV = rs.frange(self.MinV, self.MaxV, self.StepV)
 
-        self.CentreU = len(self.RngU) / 2
-        self.CentreV = len(self.RngV) / 2
-
         self.IsoCurveDensity = 2
 
-        self.Points = []
+        self.Points = Point3dList()
         self.Point = None
         self.PointCount = 0
 
@@ -484,23 +556,21 @@ class Builder:
             'V/2': int(round(self.V / 2.0)),
             'midU': round(self.MidU, self.ndigits),
             'midV': round(self.MidV, self.ndigits),
+            'midRngU': len(self.RngU) / 2,
+            'midRngV': len(self.RngV) / 2,
             'g': Genus(self.n),
             'chi': EulerCharacteristic(self.n)
         })
 
         self.Rendered = {
-            'Curves': [],
-            'Intersect': [],
-            'Surfaces': {},
-            'PolySurfaces': {},
-            'IsoCurves': {'U': [], 'V': []},
-            'Meshes': {},
-            'Points': {}
+            'c': {},  # Rhino.Geometry.NurbsCurve
+            'i': {'U': [], 'V': []},  # Rhino.Geometry.NurbsCurve [IsoCurve]
+            'm': {},  # Rhino.Geometry.Mesh
+            'p': [],  # Rhino.Geometry.Point3d
+            's': {},  # Rhino.Geometry.NurbsSurface
+            'S': {},  # Rhino.Geometry.Brep [PolySurface]
+            'x': {}  # Rhino.Geometry.NurbsCurve [Intersection]
         }
-
-        for div in __conf__.Div:
-            self.Rendered['Surfaces'][div] = []
-            self.Rendered['PolySurfaces'][div] = []
 
         # Setup Events registry
         self.Events = EventHandler()
@@ -559,9 +629,6 @@ class Builder:
                 self.Events.publish('k2.out', k1, k2)
 
             self.Events.publish('k1.out', k1)
-
-        self.AddLayers(self.Layers)
-        self.Render()
 
     def Finalize(self):
         return
@@ -706,17 +773,6 @@ class Builder:
 
         return self.Point
 
-    def ClosestPoint(self, srf, point, maxDistance=0.1):
-        '''
-        If maximumDistance > 0, then only points whose distance is
-        <= maximumDistance will be returned.
-        http://developer.rhino3d.com/api/RhinoCommon/html/M_Rhino_Geometry_Brep_ClosestPoint_1.htm
-        '''
-        brep = Brep.TryConvertBrep(srf)
-        _ = brep.ClosestPoint(point, maxDistance)
-
-        return _[0], (_[3], _[4])
-
     def CompareDistance(self, *args):
         def fromReference(point):
             projection = self.Analysis['refSphere'].ClosestPoint(point, self.Analysis['radius'])
@@ -782,6 +838,18 @@ class Builder:
         for layer in ('Camera', 'BoundingBox'):
             rs.LayerVisible(layer, False)
             rs.LayerLocked(layer, True)
+
+    @staticmethod
+    def ClosestPoint(srf, point, maxDistance=0.1):
+        '''
+        If maximumDistance > 0, then only points whose distance is
+        <= maximumDistance will be returned.
+        http://developer.rhino3d.com/api/RhinoCommon/html/M_Rhino_Geometry_Brep_ClosestPoint_1.htm
+        '''
+        brep = Brep.TryConvertBrep(srf)
+        _ = brep.ClosestPoint(point, maxDistance)
+
+        return _[0], (_[3], _[4])
 
     @staticmethod
     def BuildReferenceSphere(centre=(0, 0, 0), radius=150):
@@ -898,8 +966,8 @@ class Builder:
 class PointCloudBuilder(Builder):
     __slots__ = Builder.__slots__
 
-    def __init__(self, *args):
-        Builder.__init__(self, *args)
+    def __init__(self, **kwargs):
+        Builder.__init__(self, **kwargs)
 
         self.Layers.append('Points')
 
@@ -913,21 +981,24 @@ class PointCloudBuilder(Builder):
                 id = doc.Objects.AddPoint(point)
                 ids.append(id)
                 rs.ObjectLayer(id, layer)
+                self.Rendered['p'].append(id)
 
         Builder.Render(self, cb, parent, *args)
 
 
 class MeshBuilder(Builder):
-    __slots__ = Builder.__slots__ + ['MeshCount'] + __conf__.Div['Mesh']
+    __slots__ = Builder.__slots__ + ['MeshCount', 'Meshes']
 
-    def __init__(self, *args):
-        Builder.__init__(self, *args)
+    def __init__(self, **kwargs):
+        Builder.__init__(self, **kwargs)
 
         self.Layers.append('Meshes')
         self.MeshCount = 0
+        self.Meshes = {}
 
-        for div in __conf__.Div['Mesh']:
-            setattr(self, div, None)
+        for (group, divisions) in __conf__.Div['m'].iteritems():
+            self.Rendered['m'][group] = []
+            self.Meshes[group] = {}
 
     def __listeners__(self):
         listeners = Builder.__listeners__(self)
@@ -941,8 +1012,9 @@ class MeshBuilder(Builder):
     def AddMesh(self, *args):
         # k1, k2 = args
 
-        for div in __conf__.Div['Mesh']:
-            setattr(self.Patch, div, Mesh())
+        for (group, divisions) in __conf__.Div['m'].iteritems():
+            for div in divisions:
+                self.Meshes[group][div] = Mesh()
 
     def IncrementMeshCount(self, *args):
         k1, k2, a, b = args
@@ -972,17 +1044,18 @@ class MeshBuilder(Builder):
 
         if a > self.MinU and b > self.MinV:
             if self.Analysis['xi <= midU']:
-                self.M1 = Mesh()
-                self.BuildFaces(self.M1, *args)
-                self.Patch.M1.Append(self.M1)
+                mesh = self.Meshes[1]['M_0'] = Mesh()
+                self.BuildFaces(mesh, *args)
+                self.Patch.Meshes[1]['M_0'].Append(mesh)
             else:
-                self.M2 = Mesh()
-                self.BuildFaces(self.M2, *args)
-                self.Patch.M2.Append(self.M2)
+                mesh = self.Meshes[1]['M_1'] = Mesh()
+                self.BuildFaces(mesh, *args)
+                self.Patch.Meshes[1]['M_1'].Append(mesh)
 
     def WeldMesh(self, *args):
-        for div in __conf__.Div['Mesh']:
-            getattr(self.Patch, div).Weld(pi)
+        for (group, divisions) in __conf__.Div['m'].iteritems():
+            for div in divisions:
+                self.Patch.Meshes[group][div].Weld(pi)
 
     def Render(self, *args):
         parent = rs.AddLayer('Meshes')
@@ -990,57 +1063,61 @@ class MeshBuilder(Builder):
         def cb(phase, patch, layer, ids):
             layer = rs.AddLayer(*layer)
 
-            for i, div in enumerate(__conf__.Div['Mesh']):
-                mesh = getattr(patch, div)
-                id = doc.Objects.AddMesh(mesh)
-                ids.append(id)
-                rs.ObjectLayer(id, layer)
+            for i, (group, divisions) in enumerate(__conf__.Div['m'].iteritems()):
+                for div in divisions:
+                    id = doc.Objects.AddMesh(patch.Meshes[group][div])
+                    self.__rendered__(id)
+                    ids.append(id)
+                    rs.ObjectLayer(id, layer)
+                    self.Rendered['m'][group].append(id)
 
         Builder.Render(self, cb, parent, *args)
 
 
 class CurveBuilder(Builder):
+    '''
+    Note:
+        IsoCurves MUST be interpolated upon the corresponding NurbsSurface.
+        DO NOT attempt to generate IsoCurves from points alone;
+        deviation from Surface is NOT within `doc.AbsoluteTolerance`
+        necessary for precise `Make2d` rendering.
+    See:
+        [#14](https://bitbucket.org/kunst_dev/snippets/issues/14/wireframe#comment-40891348)
+        `SurfaceBuilder.BuildIsoCurves.InterpCrvOnSrfThroughPoints`
+    '''
     __slots__ = Builder.__slots__ + [
-        'Curves',
         'CurveCombinations',
-        'R', 'X',
-        'IsoCurves',
-        'Outer',
-        'RDiv',
-        'XDiv'
-    ] + RDiv.__func__() + XDiv.__func__()
+        'Curves',
+        'Outer'
+    ]
 
-    def __init__(self, *args):
-        Builder.__init__(self, *args)
+    for (group, subGroups) in __conf__.Div['c'].iteritems():
+        for (subGroup, divisions) in subGroups.iteritems():
+            __slots__.append(subGroup)
+
+    def __init__(self, **kwargs):
+        Builder.__init__(self, **kwargs)
+
+        self.__groups__ = __conf__.Div['c'].keys()
 
         self.Layers.extend([
+            'Border::All',
+            'Border::Outer',
             'Curves',
             'Intersect::Curves',
-            'Intersect::Points',
-            'Border::All',
-            'Border::Outer'
+            'Intersect::Points'
         ])
         self.Curves = CurveList()
         self.CurveCombinations = None
-        self.RDiv = CurveBuilder.RDiv()
-        self.XDiv = CurveBuilder.XDiv()
-        self.R = CurveList()
-        self.X = CurveList()
         self.Outer = CurveList()
-        self.IsoCurves = {'U': CurveList(), 'V': CurveList()}
-        self.IsoCurves['Uniform'] = {'U': CurveList(), 'V': CurveList()}
 
-        # # "rails"
-        for div in self.RDiv:
-            setattr(self, div, [])
-        # "cross-sections"
-        for div in self.XDiv:
-            setattr(self, div, [])
+        for (group, subGroups) in __conf__.Div['c'].iteritems():
+            self.Curves[group] = {}
 
-        if __conf__.IsoCurves:
-            for direction in ('U', 'V'):
-                for i in range(getattr(self, direction)):
-                    setattr(self, direction + str(i), Point3dList())
+            for (subGroup, divisions) in subGroups.iteritems():
+                self.Curves[group][subGroup] = {}
+
+                setattr(self, subGroup, CurveList())
 
     def __listeners__(self):
         listeners = Builder.__listeners__(self)
@@ -1057,25 +1134,15 @@ class CurveBuilder(Builder):
 
         return listeners
 
-    def CombineCurves(self):
-        '''
-        Returns unique curve pairs as enumerable itertools.combinations
-        '''
-        if self.CurveCombinations is None:
-            self.CurveCombinations = combinations(self.Curves, 2)
-
-        return self.CurveCombinations
-
     def AddCurves(self, *args):
-        for div in self.RDiv:
-            setattr(self, div, Point3dList())
-        for div in self.XDiv:
-            setattr(self, div, Point3dList())
+        for (group, subGroups) in __conf__.Div['c'].iteritems():
+            self.Patch.Curves[group] = {}
 
-        if __conf__.IsoCurves:
-            for direction in ('U', 'V'):
-                for i in range(getattr(self, direction)):
-                    setattr(self, direction + str(i), Point3dList())
+            for (subGroup, divisions) in subGroups.iteritems():
+                self.Patch.Curves[group][subGroup] = {}
+
+                for div in divisions:
+                    self.Curves[group][subGroup][div] = Point3dList()
 
     def PlotRails(self, *args):
         '''
@@ -1083,192 +1150,152 @@ class CurveBuilder(Builder):
         '''
         # k1, k2, a, b = args
 
-        if self.Analysis['xi == minU']:
-            self.R2.Add(self.Point)
-        elif self.Analysis['xi == midU']:
-            self.R1.Add(self.Point)
-        elif self.Analysis['xi == maxU']:
-            self.R0.Add(self.Point)
+        for group in self.__groups__:
+            subGroup = self.Curves[group]['R']
+
+            if self.Analysis['xi == minU']:
+                subGroup['R_2'].Add(self.Point)
+            elif self.Analysis['xi == midU']:
+                subGroup['R_1'].Add(self.Point)
+            elif self.Analysis['xi == maxU']:
+                subGroup['R_0'].Add(self.Point)
 
     def PlotXSections(self, *args):
         # k1, k2, a, b = args
 
-        # if self.Analysis['theta == 0']:
-        #     if self.Analysis['xi <= midU']:
-        #         self.X9.Add(self.Point)
-        #     if self.Analysis['xi >= midU']:
-        #         self.X8.Add(self.Point)
-        #
-        # elif self.Analysis['theta == 30']:
-        #     if self.Analysis['xi <= midU']:
-        #         self.X7.Add(self.Point)
-        #     if self.Analysis['xi >= midU']:
-        #         self.X6.Add(self.Point)
-        #
-        # elif self.Analysis['theta == 45']:
-        #     if self.Analysis['xi <= midU']:
-        #         self.X5.Add(self.Point)
-        #     if self.Analysis['xi >= midU']:
-        #         self.X4.Add(self.Point)
-        #
-        # elif self.Analysis['theta == 60']:
-        #     if self.Analysis['xi <= midU']:
-        #         self.X3.Add(self.Point)
-        #     if self.Analysis['xi >= midU']:
-        #         self.X2.Add(self.Point)
-        #
-        # elif self.Analysis['theta == 90']:
-        #     if self.Analysis['xi <= midU']:
-        #         self.X1.Add(self.Point)
-        #     if self.Analysis['xi >= midU']:
-        #         self.X0.Add(self.Point)
+        for group in self.__groups__:
+            subGroup = self.Curves[group]['X']
 
-        if self.Analysis['theta == 0']:
-            if self.Analysis['xi <= midU']:
-                self.X9.Add(self.Point)
-            if self.Analysis['xi >= midU']:
-                self.X8.Add(self.Point)
-        elif self.Analysis['theta == 30']:
-            if self.Analysis['xi <= midU']:
-                self.X7.Add(self.Point)
-            if self.Analysis['xi >= midU']:
-                self.X6.Add(self.Point)
-        elif self.Analysis['theta == 45']:
-            if self.Analysis['xi <= midU']:
-                self.X5.Add(self.Point)
-            if self.Analysis['xi >= midU']:
-                self.X4.Add(self.Point)
-        elif self.Analysis['theta == 60']:
-            if self.Analysis['xi <= midU']:
-                self.X3.Add(self.Point)
-            if self.Analysis['xi >= midU']:
-                self.X2.Add(self.Point)
-        elif self.Analysis['theta == 90']:
-            if self.Analysis['xi <= midU']:
-                self.X1.Add(self.Point)
-            if self.Analysis['xi >= midU']:
-                self.X0.Add(self.Point)
+            if self.Analysis['theta == 0']:
+                if self.Analysis['xi <= midU']:
+                    subGroup['X_9'].Add(self.Point)
+                if self.Analysis['xi >= midU']:
+                    subGroup['X_8'].Add(self.Point)
+            elif self.Analysis['theta == 30']:
+                if self.Analysis['xi <= midU']:
+                    subGroup['X_7'].Add(self.Point)
+                if self.Analysis['xi >= midU']:
+                    subGroup['X_6'].Add(self.Point)
+            elif self.Analysis['theta == 45']:
+                if self.Analysis['xi <= midU']:
+                    subGroup['X_5'].Add(self.Point)
+                if self.Analysis['xi >= midU']:
+                    subGroup['X_4'].Add(self.Point)
+            elif self.Analysis['theta == 60']:
+                if self.Analysis['xi <= midU']:
+                    subGroup['X_3'].Add(self.Point)
+                if self.Analysis['xi >= midU']:
+                    subGroup['X_2'].Add(self.Point)
+            elif self.Analysis['theta == 90']:
+                if self.Analysis['xi <= midU']:
+                    subGroup['X_1'].Add(self.Point)
+                if self.Analysis['xi >= midU']:
+                    subGroup['X_0'].Add(self.Point)
 
     def PlotIsoCurves(self, *args):
-        '''
-        TODO
-            * Recalculate point with more or less divisions of `a` and `b` to
-            control density.
-        '''
         # k1, k2, a, b = args
 
-        if __conf__.IsoCurves:
+        for group in self.__groups__:
+            group = self.Curves[group]
+
             for direction in ('U', 'V'):
-                count = getattr(self, 'Count' + direction) - 1
-                getattr(self, direction + str(count)).Add(self.Point)
+                if group.has_key(direction):
+                    subGroup = self.Curves[group][direction]
+                    count = getattr(self, 'Count' + direction) - 1
+                    subGroup[direction + '_' + str(count)].Add(self.Point)
 
     def BuildCurves(self, *args):
-        R = CurveList()
-        X = CurveList()
+        def cache(curve, group, subGroup, div):
+            curve = self.BuildInterpolatedCurve(curve, self.Degree)
 
-        for i, points in enumerate(map(lambda div: getattr(self, div), self.RDiv)):
-            curve = self.BuildInterpolatedCurve(points, self.Degree)
-            for collection in (R, self.R, self.Curves):
-                collection.Add(curve)
-            if i != 1:
+            arr[div] = self.Patch.Curves[group][subGroup][div] = curve
+            getattr(self, subGroup).Add(curve)
+
+            # See:
+            #   [#14](https://bitbucket.org/kunst_dev/snippets/issues/14#comment-40891348)
+            if subGroup == 'R' and i != 1:
                 self.Outer.Add(curve)
 
-        for i, points in enumerate(map(lambda div: getattr(self, div), self.XDiv)):
-            curve = self.BuildInterpolatedCurve(points, self.Degree)
-            for collection in (X, self.X, self.Curves):
-                collection.Add(curve)
+        for (group, subGroup) in __conf__.Div['c'].iteritems():
+            for (subGroup, divisions) in subGroup.iteritems():
+                subGroup = self.Curves[group][subGroup]
 
-        if __conf__.IsoCurves:
-            for direction in ('U', 'V'):
-                for i in range(getattr(self, direction)):
-                    curves = []
-                    points = getattr(self, direction + str(i))
+                for i, div in enumerate(divisions):
+                    points = subGroup[div]
 
-                    if direction == 'V':  # Ensure sharp kink
-                        points = list(points)
+                    if subGroup == 'V':  # Ensure sharp kink
                         count = int(self.Analysis['V/2'] - 1)
-                        curves.extend([
-                            self.BuildInterpolatedCurve(points[0:-count], self.Degree),
-                            self.BuildInterpolatedCurve(points[count:], self.Degree)
-                        ])
+
+                        for i, curve in enumerate((
+                            points.GetRange(0, count),
+                            points.GetRange(count - 1, count)
+                        )):
+                            div = div + '_' + str(i)
+                            __conf__.Div['c'][group][subGroup].append(div)
+                            cache(curve, group, subGroup, div)
                     else:
-                        curves.append(self.BuildInterpolatedCurve(points, self.Degree))
-
-                    for collection in (self.IsoCurves, self.Patch.IsoCurves):
-                        for curve in curves:
-                            collection['Uniform'][direction].Add(curve)
-
-        self.Patch.Edges = (R, X)
+                        cache(points, group, subGroup, div)
 
     def Render(self, *args):
-        def cb(curve, layer):
-            id = doc.Objects.AddCurve(curve)
-            self.__rendered__(id)
-            rs.ObjectLayer(id, layer)
-            self.Rendered['Curves'].append(id)
-
-            # self.FindCurveCentre(curve, '[' + str(k1) + ',' + str(k2) + ']')
-
-        if __conf__.IsoCurves:
-            # Although better aesthetically IsoCurves generated from points aren't within
-            # AbsoluteTolerance of the surface.
-            # When tolerance < 0.1 `Make2d` obscures curves falling slightly behind the surface.
-            for e in ('U', 'V'):
-                layer = rs.AddLayer(util.layer('IsoCurves', 'Uniform', e), Color.Purple)
-
-                # Curve.JoinCurves(self.IsoCurves['Uniform'][e])
-                for curve in self.IsoCurves['Uniform'][e]:
-                    id = doc.Objects.AddCurve(curve)
-                    self.__rendered__(id)
-                    rs.ObjectLayer(id, layer)
-
         for k1, phase in enumerate(util.chunk(self.Patches, self.n)):
-            parent = rs.AddLayer(util.layer('Curves', k1))
-
             for k2, patch in enumerate(phase):
-                R, X = patch.Edges
-                R0, R1, R2 = R
-                X0, X1, X2, X3, X4, X5, X6, X7, X8, X9 = X
+                for i, (group, subGroups) in __conf__.Div['c'].iteritems():
+                    for (subGroup, divisions) in subGroups.iteritems():
+                        parent = util.layer('Curves', subGroup, k1)
+                        if not rs.isLayer(parent):
+                            parent = rs.AddLayer(parent)
+                            layer = util.layer(parent, k2)
+                            if not rs.isLayer(layer):
+                                colour = self.Colour(self.n, k1, k2)
+                                layer = rs.AddLayer(util.layer(parent, k2), colour)
 
-                # colour = self.__palette__[-k2][-1]
-                colour = self.Colour(self.n, k1, k2)
-                layer = rs.AddLayer(util.layer(parent, k2), colour)
+                        for div in divisions:
+                            curve = patch.Curves[group][subGroup][div]
+                            id = doc.Objects.AddCurve(curve)
+                            self.__rendered__(id)
+                            rs.ObjectLayer(id, layer)
+                            self.Rendered['c'][group].append(id)
 
-                for div in self.RDiv:
-                    curve = eval(div)
-                    cb(curve, layer)
+                            # self.FindCurveCentre(curve, '[' + str(k1) + ',' + str(k2) + ']')
 
-                for div in self.XDiv:
-                    curve = eval(div)
-                    cb(curve, layer)
+    @staticmethod
+    def DivideCurve(curve, div):
+        '''
+        `Curve.DivideByLength` varies according to curvature
+        unlike `Curve.DivideEquidistant`
 
-                # for edgeGroup in (Edges1, Edges2):
-                #     # Create Boundary Representation
-                #     # self.Patch.Brep = Brep.CreateEdgeSurface(edgeGroup)
-                #     # id = doc.Objects.AddBrep(self.Patch.Brep)
-                #     # self.__rendered__(id)
-                #
-                #     # Create Nurbs Surface from curves
-                #     surface, err = NurbsSurface.CreateNetworkSurface(
-                #         edgeGroup,
-                #         1,
-                #         0.1,
-                #         0.1,
-                #         1.0
-                #     )
-                #     id = doc.Objects.AddSurface(surface)
-                #     self.__rendered__(id)
+        Example:
+            for curve in self.Outer:  # Curve.JoinCurves(self.Outer):
+                self.DivideCurve(curve, 20)
+
+        Parameters:
+            count : int
+            length : float
+                n * UnitSystem between points along
+        '''
+        # points = curve.DivideEquidistant(div)
+
+        # result = curve.DivideByLength(div, True)
+        # points = [curve.PointAt(t) for t in result]
+
+        result = curve.DivideByCount(div, True)
+        points = [curve.PointAt(t) for t in result]
+
+        return points
+
+    def CombineCurves(self):
+        '''
+        Returns unique combinations of keys in self.Curves[group]
+        '''
+        for (group, subGroups) in __conf__.Div['c'].iteritems():
+            if not self.CurveCombinations.has_key(group):
+                self.CurveCombinations[group]
+                for (subGroup, divisions) in subGroups.iteritems():
+                    self.CurveCombinations[group] = combinations(divisions, 2)
+
+        return self.CurveCombinations
 
     def IntersectCurves(self):
-        '''
-        # Find intersections
-        # Then draw a curve between points over the surface
-        for k1, phase in enumerate(util.chunk(self.Patches, self.n)):
-            for k2, patch in enumerate(phase):
-
-                for srf in patch.Surfaces['Div2']:
-                    rs.AddInterpCrvOnSrf(srf, points):
-        '''
         def HandleIntersectionEvents(obj):
             if obj is None:
                 return
@@ -1304,669 +1331,641 @@ class CurveBuilder(Builder):
         tolerance = doc.ModelAbsoluteTolerance
         rs.UnitAbsoluteTolerance(0.1, True)
 
-        # "self-intersections"
-        for curve in self.Curves:
-            result = Intersect.Intersection.CurveSelf(curve, 0.1)
-            HandleIntersectionEvents(result)
+        for (group, subGroups) in __conf__.Div['c'].iteritems():
+            for (subGroup, divisions) in subGroups.iteritems():
+                # "self-intersections"
+                for curve in self.Curves[group][subGroup].itervalues():
+                    result = Intersect.Intersection.CurveSelf(curve, 0.1)
+                    HandleIntersectionEvents(result)
 
-        # "intersection"
-        for combination in self.CurveCombinations:
-            a, b = combination
-            result = Intersect.Intersection.CurveCurve(a, b, 0.1, 1.0)
-            HandleIntersectionEvents(result)
+                # "intersection"
+                for (a, b) in self.CurveCombinations[group]:
+                    result = Intersect.Intersection.CurveCurve(a, b, 0.1, 1.0)
+                    HandleIntersectionEvents(result)
 
         rs.UnitAbsoluteTolerance(tolerance, True)  # restore tolerance
 
 
 class SurfaceBuilder(CurveBuilder):
-    '''
-    Build quadrilateral surfaces.
-    See [Example](https://bitbucket.org/snippets/kunst_dev/X894E8)
-    '''
-    __slots__ = CurveBuilder.__slots__ + [
-        '__points__',
-        'Surfaces',
-        'Breps',
-        'PointGrid',
-        'SurfaceCombinations',
-        'BrepCombinations',
-        'PolySurfaces',
-        'Div',
-        'UDiv',
-        'VDiv',
-        'A', 'B', 'C'
-    ] + Div.__func__() + UDiv.__func__() + VDiv.__func__()
-
-    def __init__(self, *args):
-        CurveBuilder.__init__(self, *args)
-
-        self.Layers.extend([
-            'Surfaces',
-            'PolySurfaces',
-            # 'Silhouette',
-            'IsoCurves',
-            'IsoCurves::U',
-            'IsoCurves::V',
-            # 'IsoCurves::U::Divisions',
-            # 'IsoCurves::V::Divisions'
-            # 'RenderMesh',
-        ])
-
-        self.Surfaces = {}
-        self.Breps = {}
-        self.PointGrid = {}
-        self.SurfaceCombinations = {}
-        self.BrepCombinations = {}
-        self.PolySurfaces = {}
-
-        for div in __conf__.Div:
-            self.Surfaces[div] = []
-            self.Breps[div] = []
-            self.PointGrid[div] = []
-            self.SurfaceCombinations[div] = None
-            self.BrepCombinations[div] = None
-            self.PolySurfaces[div] = None
-
-        self.Div = __conf__.Div()
-        self.UDiv = __conf__.UDiv()
-        self.VDiv = __conf__.VDiv()
-
-    def __listeners__(self):
-        listeners = CurveBuilder.__listeners__(self)
-        listeners['k2.on'].append(self.AddSurfaces)
-        listeners['b.in'].append(self.PlotSurface)
-        listeners['k2.out'].extend([self.BuildSurface, self.JoinSurfaces])
-
-        return listeners
-
-    def CombineSurfaces(self):
-        '''
-        Returns unique Surface pairs as enumerable itertools.combinations
-        '''
-        for e in __conf__.Div:
-            if self.SurfaceCombinations[e] is None:
-                self.SurfaceCombinations[e] = combinations(self.Surfaces[e], 2)
-
-        return self.SurfaceCombinations
-
-    def CombineBreps(self):
-        '''
-        Returns unique Brep pairs as enumerable itertools.combinations
-        '''
-        for e in __conf__.Div:
-            if self.BrepCombinations[e] is None:
-                self.BrepCombinations[e] = combinations(self.Breps[e], 2)
-
-        return self.BrepCombinations
-
-    def AddSurfaces(self, *args):
-        '''
-        Reset parameter counts and add a point repository per division
-        '''
-        if 'Div0' in __conf__.Div:
-            setattr(self, 'C', Point3dList())
-
-        if 'Div1' in __conf__.Div:
-            for div in ('A', 'B'):
-                setattr(self, div, Point3dList())
-
-        if 'Div2' in __conf__.Div:
-            for div in __conf__.Div2['S']:
-                setattr(self, div, Point3dList())
-            for div in __conf__.Div2['U']:
-                setattr(self, div, 0)
-            for div in __conf__.Div2['V']:
-                setattr(self, div, 0)
-
-    def AddSurfaceSubdivision(self, *args):
-        '''
-        Example:
-            Make further U divisions as below:
-            ```
-            xi == self.RngU[self.CentreU]
-            self.Analysis['midU']
-            self.OffsetU(-3.0)
-            self.OffsetU(3.0)
-            ```
-        '''
-        k1, k2, a, b = args
-
-        if self.Analysis['theta == 90']:
-            if self.Analysis['midU']:
-                self.BuildSurface(*args)  # Finalise current subdivision
-                self.AddSurface(*args)  # Begin next subdivision
-                self.__points__ = Point3dList(self.Points[-self.Analysis['U/2']:])
-                self.IncrementCountU()
-
-    def PlotSurface(self, *args):
-        k1, k2, a, b = args
-
-        if 'Div0' in __conf__.Div:
-            self.C.Add(self.Point)
-
-        if 'Div1' in __conf__.Div:
-            if self.Analysis['xi <= midU']:
-                self.A.Add(self.Point)
-            if self.Analysis['xi >= midU']:
-                self.B.Add(self.Point)
-
-        if 'Div2' in __conf.Div:
-            if self.Analysis['theta <= 30']:
-                if self.Analysis['xi == minU']:
-                    self.V0_0 += 1
-                elif self.Analysis['xi == midU']:
-                    self.V0_1 += 1
-
-                if self.Analysis['xi <= midU']:
-                    self.S0_0.Add(self.Point)
-                if self.Analysis['xi >= midU']:
-                    self.S0_1.Add(self.Point)
-
-            if self.Analysis['theta >= 30'] and self.Analysis['theta <= 45']:
-                if self.Analysis['xi == minU']:
-                    self.V30_0 += 1
-                elif self.Analysis['xi == midU']:
-                    self.V30_1 += 1
-
-                if self.Analysis['xi <= midU']:
-                    self.S30_0.Add(self.Point)
-                if self.Analysis['xi >= midU']:
-                    self.S30_1.Add(self.Point)
-
-            if self.Analysis['theta >= 45'] and self.Analysis['theta <= 60']:
-                if self.Analysis['xi == minU']:
-                    self.V45_0 += 1
-                elif self.Analysis['xi == midU']:
-                    self.V45_1 += 1
-
-                if self.Analysis['xi <= midU']:
-                    self.S45_0.Add(self.Point)
-                if self.Analysis['xi >= midU']:
-                    self.S45_1.Add(self.Point)
-
-            if self.Analysis['theta >= 60'] and self.Analysis['theta <= 90']:
-                if self.Analysis['xi == minU']:
-                    self.V60_0 += 1
-                elif self.Analysis['xi == midU']:
-                    self.V60_1 += 1
-
-                if self.Analysis['xi <= midU']:
-                    self.S60_0.Add(self.Point)
-                if self.Analysis['xi >= midU']:
-                    self.S60_1.Add(self.Point)
-
-    def BuildSurface(self, *args):
-        '''
-        TODO Add `Weight` to `self.Patch.Analysis['centre']` control point
-
-        NurbsSurface.CreateThroughPoints will raise "Invalid U and V counts" if
-        `Point3dList != self.CountU * self.CountV`
-
-        ```
-            cp = srf.Points.GetControlPoint(0, self.Analysis['V/2'])
-            cp.Weight = 1000
-        ```
-        '''
-        def cache(srf, key):
-            self.Surfaces[key].append(srf)
-            self.Patch.Surfaces[key].append(srf)
-
-            brep = Brep.TryConvertBrep(srf)
-            self.Breps[key].append(brep)
-            self.Patch.Breps[key].append(brep)
-
-        def PointGrid(points, CountU, CountV):
-            count = len(points)
-
-            U = [[] for n in range(CountV)]
-            V = []  # [] for n in range(CountU)
-
-            for n in range(0, count, CountV):
-                arr = points.GetRange(n, CountV)
-                V.append(arr)
-
-            for n in range(CountV):
-                for arr in V:
-                    U[n].append(arr[n])
-
-            return U, V
-
-        if 'Div0' in __conf__.Div:
-            points = getattr(self, 'C')
-
-            if points.Count > 0:
-                CountU = self.U
-                CountV = self.V
-
-                pointGrid = {}
-                self.Patch.PointGrid['Div0'].append(pointGrid)
-                for e in zip(('U', 'V'), PointGrid(points, CountU, CountV)):
-                    pointGrid[e[0]] = e[1]
-
-                srf = NurbsSurface.CreateThroughPoints(
-                    points,
-                    CountU,
-                    CountV,
-                    self.DegreeU,
-                    self.DegreeV,
-                    False,
-                    False)
-
-                cache(srf, 'Div0')
-
-        if 'Div1' in __conf__.Div:
-            for char in ('A', 'B'):
-                points = getattr(self, char)
-
-                if points.Count > 0:
-                    CountU = self.Analysis['U/2']
-                    CountV = self.V
-
-                    pointGrid = {}
-                    self.Patch.PointGrid['Div1'].append(pointGrid)
-                    for e in zip(('U', 'V'), PointGrid(points, CountU, CountV)):
-                        pointGrid[e[0]] = e[1]
-
-                    srf = NurbsSurface.CreateThroughPoints(
-                        points,
-                        CountU,
-                        CountV,
-                        self.DegreeU,
-                        self.DegreeV,
-                        False,
-                        False)
-
-                    # Build IsoCurves from PointGrid. Do this for 'Div1' surfaces only.
-                    # Make2d seems to perform better when given fewer objects properly joined.
-                    for i, direction in enumerate(('U', 'V')):
-                        isoCurves, seams = self.BuildIsoCurves(srf, pointGrid, direction, 10)
-
-                        for collection in (self.Patch.IsoCurves, self.IsoCurves):
-                            collection[direction].AddRange(isoCurves)
-
-                    cache(srf, 'Div1')
-
-        if 'Div2' in __conf__.Div:
-            for i in range(0, 2, 1):
-                for char in range(0, 90 + 15, 15):
-                    points = getattr(self, 'S' + str(char) + '_' + str(i))
-
-                    if points.Count > 0:
-                        CountU = self.Analysis['U/2']
-                        CountV = getattr(self, 'V' + str(char) + '_' + str(i))
-
-                        pointGrid = {}
-                        self.Patch.PointGrid['Div2'].append(pointGrid)
-                        for e in zip(('U', 'V'), PointGrid(points, CountU, CountV)):
-                            pointGrid[e[0]] = e[1]
-
-                        srf = NurbsSurface.CreateThroughPoints(
-                            points,
-                            CountU,
-                            CountV,
-                            self.DegreeU,
-                            self.DegreeV,
-                            False,
-                            False)
-
-                        cache(srf, 'Div2')
-
-    def JoinSurfaces(self, *args):
-        '''
-        TODO Join Patch subdivisions
-        Increase `doc.ModelAbsoluteTolerance` to maximise polysurface inclusion
-        '''
-        pass
-
-        tolerance = 0.1
-        result = []
-
-        for i, e in enumerate(__conf__.Div):
-            result.append(Brep.JoinBreps(self.Patch.Breps[e], tolerance))
-            # for srf in result:
-            #     id = doc.Objects.AddBrep(srf)
-            #     self.__rendered__(id)
-            #     rs.ObjectLayer(id, 'PolySurfaces')
-
-        return result
-
-    def Render(self, *args):
-        def cb(phase, patch, layer, ids):
-            layer, colour = layer
-
-            for i, e in enumerate(__conf__.Div):
-                subLayer = rs.AddLayer(util.layer('Surfaces', e, *patch.Phase), colour)
-
-                for srf in patch.Surfaces[e]:
-                    id = doc.Objects.AddSurface(srf)
-                    self.__rendered__(id)
-                    ids.append(id)
-                    rs.ObjectLayer(id, subLayer)
-                    self.Rendered['Surfaces'][e].append(id)
-
-        Builder.Render(self, cb, 'Surfaces', *args)
-        CurveBuilder.Render(self, *args)
-
-    def Finalize(self):
-        # Redundant
-        #   * `self.ConvertToBeziers()`
-        #   * `self.BuildSilhouette()`
-
-        self.BuildBoundingBox(self.Surfaces['Div1'])  # self.PolySurfaces['Div1']
-        self.SetAxonometricCameraProjection(self.BoundingBox)
-
-        self.Dimensions()
-
-        self.CombineCurves()
-        self.CombineSurfaces()
-        self.CombineBreps()
-        self.BuildPolySurface()
-        self.BuildBorders()
-        self.BuildWireframe()
-        # self.IntersectCurves()
-        # Curves, Points = self.IntersectSurfaces()
-        # self.SplitAtIntersection()
-
-        doc.Views.Redraw()
-
-    @staticmethod
-    def AnalyseSurface(srf):
-        '''
-        Attempts to step through paramater space by `Rhino.Geometry.NurbsSurface.SpanCount`.
-
-        Note:
-            Do not attempt to divide NURBS parameter space to obtain length.
-        See:
-            https://ieatbugsforbreakfast.wordpress.com/2013/09/27/curve-parameter-space/
-        '''
-        _ = {}
-        _['U'] = srf.SpanCount(0)  # srf.Points.CountU
-        _['V'] = srf.SpanCount(1)  # srf.Points.CountV
-        _['minU'], _['maxU'] = srf.Domain(1)
-        _['minV'], _['maxV'] = srf.Domain(0)
-        _['stepU'] = fabs(_['maxU'] - _['minU']) / float(_['U'] - 1)
-        _['stepV'] = fabs(_['maxV'] - _['minV']) / float(_['V'] - 1)
-
-        # srf.Evaluate()
-        # srf.CurvatureAt()
-        # srf.GetSurfaceSize()
-        # srf.FrameAt()
-        # srf.OrderU
-        # srf.OrderV
-        #
-        # brep.SolidOrientation()
-        # brep.Loops()
-        # brep.Curves2D()
-
-        return _
-
-    def Dimensions(self):
-        '''
-        Calculate form bounds and reference points
-        '''
-        _ = self.Analysis
-
-        bx = self.BoundingBox
-
-        origin = bx[0]
-
-        _['offset'] = (origin - _['docCentre']).Length
-
-        _['distance'] = [(origin - bx[i]).Length for i in (1, 3, 4)]
-        _['diagonal'] = [(bx[a] - bx[b]).Length for (a, b) in combinations((1, 3, 4), 2)]
-
-        _['centre'] = Point3d(*[origin[i] + (dist / 2.0) for i, dist in enumerate(_['distance'])])
-
-        dx, dy, dz = _['distance']
-        cx, cy, cz = _['centre']
-        xy, xz, yz = _['diagonal']
-
-        _['minX'] = Point3d(cx - (dx / 2.0), cy, cz)
-        _['maxX'] = Point3d(cx + (dx / 2.0), cy, cz)
-
-        _['minY'] = Point3d(cx, cy - (dy / 2.0), cz)
-        _['maxY'] = Point3d(cx, cy + (dy / 2.0), cz)
-
-        _['minZ'] = Point3d(cx, cy, cz - (dz / 2.0))
-        _['maxZ'] = Point3d(cx, cy, cz + (dz / 2.0))
-
-        _['diameter'] = max(_['diagonal'])
-        _['radius'] = _['diameter'] / 2.0
-
-        _['refSphere'] = self.BuildReferenceSphere(_['centre'], _['radius'])
-
-        return self.Analysis
-
-    def BuildPolySurface(self):
-        tolerance = 0.1
-
-        for i, e in enumerate(__conf__.PolySurfaces):
-            layer = rs.AddLayer(util.layer('PolySurfaces', e))
-            result = Brep.JoinBreps(self.Breps[e], tolerance)
-
-            for srf in result:
-                id = doc.Objects.AddBrep(srf)
-                self.__rendered__(id)
-                rs.ObjectLayer(id, layer)
-                self.Rendered['PolySurfaces'][e].append(id)
-
-            self.PolySurfaces[e], = result
-
-        return self.PolySurfaces
-
-    def IntersectSurfaces(self):
-        tolerance = doc.ModelAbsoluteTolerance
-
-        Curves = CurveList()
-        Points = Point3dList()
-
-        Edges = [(e.PointAtStart, e.PointAtEnd) for e in self.Curves]
-
-        # Use smaller divisions -- 'Div2' to demarcate patch self-intersection(s)
-        for combination in self.BrepCombinations['Div2']:
-            a, b = combination
-
-            result, curves, points = Intersect.Intersection.BrepBrep(a, b, tolerance)
-
-            for point in points:
-                pass
-
-                Points.Add(point)
-                id = doc.Objects.AddPoint(point)
-                self.__rendered__(id)
-                rs.ObjectLayer(id, 'Intersect::Points')
-
-            for curve in curves:
-                C1 = curve.PointAtStart
-                C2 = curve.PointAtEnd
-
-                for edge in Edges:
-                    """
-                    TODO TRY IsAtSeam
-                    http://developer.rhino3d.com/api/RhinoCommonWin/html/M_Rhino_Geometry_Surface_IsAtSeam.htm
-                    """
-                    E1, E2 = edge
-                    match = C1.EpsilonEquals(E1, 0.1) and C2.EpsilonEquals(E2, 0.1) or C1.EpsilonEquals(E2, 0.1) and C2.EpsilonEquals(E1, 0.1)  # reverse
-
-                    if not match:
-                        Curves.Add(curve)
-                        id = doc.Objects.AddCurve(curve)
-                        self.__rendered__(id)
-                        rs.ObjectLayer(id, 'Intersect::Curves')
-                        self.Rendered['Intersect'].append(id)
-
-        return Curves, Points
-
-    def BuildBorders(self):
-        # for curve in self.Curves:
-        #     id = doc.Objects.AddCurve(curve)
-        #     self.__rendered__(id)
-        #     rs.ObjectLayer(curve, 'Border::All')
-
-        for curve in Curve.JoinCurves(self.Outer):
-            id = doc.Objects.AddCurve(curve)
-            self.__rendered__(id)
-            rs.ObjectLayer(id, 'Border::Outer')
-
-    def BuildWireframe(self, join=True):
-        for e in ('U', 'V'):
-            if join:
-                curves = sorted(
-                    Curve.JoinCurves(self.IsoCurves[e], 0.1, False),
-                    cmp=self.CompareDistance)
-            else:
-                curves = self.IsoCurves[e]
-
-            for curve in curves:  # [::self.IsoCurveDensity]
-                id = doc.Objects.AddCurve(curve)
-                self.__rendered__(id)
-                rs.ObjectLayer(id, util.layer('IsoCurves', e))
-                # Add id to self.Rendered['IsoCurves'] to facilitate staged Make2d algorithm.
-                self.Rendered['IsoCurves'][e].append(id)
-
-        return self.Rendered['IsoCurves']
-
-    def BuildIsoCurves(self, srf, grid, direction, count=3):
-        def InterCrvOnSrfThroughDivisions():
-            '''
-            FAIL `ExtractIsoCurve` produces discontinuous curves.
-            FAIL Synch divisions to world coordinates, else divisions across sympathetic Outer curves will be misaligned.
-            '''
-            tolerance = doc.ModelAbsoluteTolerance
-            points = grid[direction]
-            curves = []
-
-            edge1 = srf.InterpolatedCurveOnSurface(points[0], 0.1)
-            edge2 = srf.InterpolatedCurveOnSurface(points[-1], 0.1)
-
-            div1 = self.DivideCurve(edge1, div=count)
-            div2 = self.DivideCurve(edge2, div=count)
-
-            for i in range(count + 1):
-                points = (div1[i], div2[i])  # start, end
-                curves.append(srf.InterpolatedCurveOnSurface(points, tolerance))
-
-            return curves
-
-        def InterpCrvOnSrfThroughPoints(srf, grid):
-            '''
-            Increase point samples for higher isocurve density
-            '''
-            def build(arr, direction):
-                segments = CurveList()
-
-                for points in arr:
-                    curve = srf.InterpolatedCurveOnSurface(points, 0.1)
-                    segments.Add(curve)
-
-                return segments
-
-            isoCurves = CurveList()
-            seams = CurveList()
-            count = len(grid)
-
-            # Separate first and last; JoinCurves fails when duplicates overlap at surface seams
-            # `CurveList.AddRange(CurveList.GetRange(1, count - 2))`
-
-            # All segments between first and last positions within patch
-            for segment in build(grid[1:-1], direction):
-                isoCurves.Add(segment)
-
-            # First and last segments
-            for segment in build(grid[0::(count - 1)], direction):
-                seams.Add(segment)
-
-            return isoCurves, seams
-
-        return InterpCrvOnSrfThroughPoints(srf, grid[direction])
-
-    @staticmethod
-    def ExtractIsoCurve(srf, parameter, direction=0):
-        isBrep = type(srf) is BrepFace
-        U = []
-        V = []
-
-        for i, args in enumerate((('U', 1), ('V', 0))):
-            arr = eval(args[0])
-
-            if direction in (i, 2):
-                if isBrep:
-                    arr.extend(srf.TrimAwareIsoCurve(i, parameter[args[1]]))
-                else:
-                    arr.append(srf.IsoCurve(i, parameter[args[1]]))
-
-        return U, V
-
-    @staticmethod
-    def DivideCurve(curve, div):
-        '''
-        `Curve.DivideByLength` varies according to curvature
-        unlike `Curve.DivideEquidistant`
-
-        Example:
-            for curve in self.Outer:  # Curve.JoinCurves(self.Outer):
-                self.DivideCurve(curve, 20)
-
-        Parameters:
-            count : int
-            length : float
-                n * UnitSystem between points along
-        '''
-        # points = curve.DivideEquidistant(div)
-
-        # result = curve.DivideByLength(div, True)
-        # points = [curve.PointAt(t) for t in result]
-
-        result = curve.DivideByCount(div, True)
-        points = [curve.PointAt(t) for t in result]
-
-        return points
-
-    def ConvertToBeziers():
-        pass
-
-        layer = rs.AddLayer('Beziers')
-        beziers = []
-
-        # for srf in self.Surfaces['Div2']:
-        #     bezier = Rhino.ConvertSurfaceToBezier(srf, False)
-        #     beziers.append(bezier)
-        #     rs.ObjectLayer(bezier, layer)
-
-        # rs.ObjectsByType(rs.filter.polysurface, True)
-        # rs.Command('ConvertToBeziers')
-
-        rs.LayerLocked(layer, True)
-
-        return beziers
-
-    def SplitAtIntersection(self):
-        pass
-        # breps = a.Split(b, tolerance)
-        #
-        # if len(breps) > 0:
-        #     rhobj = rs.coercerhinoobject(a, True)
-        #     if rhobj:
-        #         attr = rhobj.Attributes if rs.ContextIsRhino() else None
-        #         result = []
-        #
-        #         for i in range(len(breps)):
-        #             if i == 0:
-        #                 doc.Objects.Replace(rhobj.Id, breps[i])
-        #                 result.append(rhobj.Id)
-        #             else:
-        #                 result.append(doc.Objects.AddBrep(breps[i], attr))
-        #     else:
-        #         result = [doc.Objects.AddBrep(brep) for brep in breps]
-
-    def BuildSilhouette():
-        pass
-
-        rs.CurrentLayer('PolySurfaces')
-        rs.Command('_Silhouette')
-        for id in rs.ObjectsByType(rs.filter.curve, True):
-            rs.ObjectLayer(id, 'Silhouette')
-        rs.LayerLocked('Silhouette', True)
+    pass
+    # '''
+    # Build quadrilateral surfaces.
+    # See [Example](https://bitbucket.org/snippets/kunst_dev/X894E8)
+    # '''
+    # __slots__ = CurveBuilder.__slots__ + [
+    #     '__points__',
+    #     'Breps',
+    #     'PointGrid',
+    #     'PolySurfaces',
+    #     'SurfaceCombinations',
+    #     'Surfaces'
+    # ]
+    #
+    # def __init__(self, **kwargs):
+    #     CurveBuilder.__init__(self, **kwargs)
+    #
+    #     self.Layers.extend([
+    #         'IsoCurves::U',
+    #         'IsoCurves::V',
+    #         'IsoCurves',
+    #         'PolySurfaces',
+    #         'Surfaces'
+    #     ])
+    #
+    #     self.__groups__ = __conf__.Div['s'].keys()
+    #
+    #     self.Surfaces = {}
+    #     self.Breps = {}
+    #     self.PointGrid = {}
+    #     self.SurfaceCombinations = {}
+    #     self.PolySurfaces = {}
+    #
+    #     for (group, divisions) in __conf__.Div['s'].iteritems():
+    #         self.Rendered['s'][group] = []
+    #
+    #         self.Surfaces[group] = {}
+    #         self.Breps[group] = {}
+    #         self.PointGrid[group] = {}
+    #         self.SurfaceCombinations[group] = {}
+    #
+    #         for div in divisions:
+    #             self.Surfaces[group][div] = []
+    #             self.Breps[group][div] = []
+    #             self.PointGrid[group][div] = []
+    #             self.SurfaceCombinations[group][div] = None
+    #
+    #     for (group, divisions) in __conf__.Div['S'].iteritems():
+    #         self.Rendered['S'][group] = []
+    #
+    #         self.PolySurfaces[group] = {}
+    #
+    #         for div in divisions:
+    #             self.PolySurfaces[group][div] = None
+    #
+    # def __listeners__(self):
+    #     listeners = CurveBuilder.__listeners__(self)
+    #     listeners['k2.on'].append(self.AddSurfaces)
+    #     listeners['b.in'].append(self.PlotSurface)
+    #     listeners['k2.out'].extend([self.BuildSurface, self.JoinSurfaces])
+    #
+    #     return listeners
+    #
+    # def AddSurfaces(self, *args):
+    #     '''
+    #     Reset parameter counts and add a point repository per division
+    #     '''
+    #     if 0 in self.__groups__:
+    #         for (group, subGroups) in __conf__.Div['s'][0]
+    #         setattr(self, 'C', Point3dList())
+    #
+    #     if 1 in self.__groups__:
+    #         for div in ('A', 'B'):
+    #             setattr(self, div, Point3dList())
+    #
+    #     if 2 in self.__groups__:
+    #         for div in __conf__.Div2['s']:
+    #             setattr(self, div, Point3dList())
+    #         for div in __conf__.Div2['U']:
+    #             setattr(self, div, 0)
+    #         for div in __conf__.Div2['V']:
+    #             setattr(self, div, 0)
+    #
+    # def AddSurfaceSubdivision(self, *args):
+    #     '''
+    #     Example:
+    #         Make further U divisions as below:
+    #         ```
+    #         xi == self.RngU[self.Analysis['midRngU']]
+    #         self.Analysis['midU']
+    #         self.OffsetU(-3.0)
+    #         self.OffsetU(3.0)
+    #         ```
+    #     '''
+    #     k1, k2, a, b = args
+    #
+    #     if self.Analysis['theta == 90']:
+    #         if self.Analysis['midU']:
+    #             self.BuildSurface(*args)  # Finalise current subdivision
+    #             self.AddSurface(*args)  # Begin next subdivision
+    #             self.__points__ = Point3dList(self.Points[-self.Analysis['U/2']:])
+    #             self.IncrementCountU()
+    #
+    # def PlotSurface(self, *args):
+    #     k1, k2, a, b = args
+    #
+    #     if 0 in self.__groups__:
+    #         self.C.Add(self.Point)
+    #
+    #     if 1 in self.__groups__:
+    #         if self.Analysis['xi <= midU']:
+    #             self.A.Add(self.Point)
+    #         if self.Analysis['xi >= midU']:
+    #             self.B.Add(self.Point)
+    #
+    #     if 2 in self.__groups__:
+    #         if self.Analysis['theta <= 30']:
+    #             if self.Analysis['xi == minU']:
+    #                 self.V0_0 += 1
+    #             elif self.Analysis['xi == midU']:
+    #                 self.V0_1 += 1
+    #
+    #             if self.Analysis['xi <= midU']:
+    #                 self.S0_0.Add(self.Point)
+    #             if self.Analysis['xi >= midU']:
+    #                 self.S0_1.Add(self.Point)
+    #
+    #         if self.Analysis['theta >= 30'] and self.Analysis['theta <= 45']:
+    #             if self.Analysis['xi == minU']:
+    #                 self.V30_0 += 1
+    #             elif self.Analysis['xi == midU']:
+    #                 self.V30_1 += 1
+    #
+    #             if self.Analysis['xi <= midU']:
+    #                 self.S30_0.Add(self.Point)
+    #             if self.Analysis['xi >= midU']:
+    #                 self.S30_1.Add(self.Point)
+    #
+    #         if self.Analysis['theta >= 45'] and self.Analysis['theta <= 60']:
+    #             if self.Analysis['xi == minU']:
+    #                 self.V45_0 += 1
+    #             elif self.Analysis['xi == midU']:
+    #                 self.V45_1 += 1
+    #
+    #             if self.Analysis['xi <= midU']:
+    #                 self.S45_0.Add(self.Point)
+    #             if self.Analysis['xi >= midU']:
+    #                 self.S45_1.Add(self.Point)
+    #
+    #         if self.Analysis['theta >= 60'] and self.Analysis['theta <= 90']:
+    #             if self.Analysis['xi == minU']:
+    #                 self.V60_0 += 1
+    #             elif self.Analysis['xi == midU']:
+    #                 self.V60_1 += 1
+    #
+    #             if self.Analysis['xi <= midU']:
+    #                 self.S60_0.Add(self.Point)
+    #             if self.Analysis['xi >= midU']:
+    #                 self.S60_1.Add(self.Point)
+    #
+    # def BuildSurface(self, *args):
+    #     '''
+    #     TODO Add `Weight` to `self.Patch.Analysis['centre']` control point
+    #
+    #     NurbsSurface.CreateThroughPoints will raise "Invalid U and V counts" if
+    #     `Point3dList != self.CountU * self.CountV`
+    #
+    #     ```
+    #         cp = srf.Points.GetControlPoint(0, self.Analysis['V/2'])
+    #         cp.Weight = 1000
+    #     ```
+    #     '''
+    #     def cache(srf, key):
+    #         self.Surfaces[key].append(srf)
+    #         self.Patch.Surfaces[key].append(srf)
+    #
+    #         brep = Brep.TryConvertBrep(srf)
+    #         self.Breps[key].append(brep)
+    #         self.Patch.Breps[key].append(brep)
+    #
+    #     def PointGrid(points, CountU, CountV):
+    #         count = len(points)
+    #
+    #         U = [[] for n in range(CountV)]
+    #         V = []  # [] for n in range(CountU)
+    #
+    #         for n in range(0, count, CountV):
+    #             arr = points.GetRange(n, CountV)
+    #             V.append(arr)
+    #
+    #         for n in range(CountV):
+    #             for arr in V:
+    #                 U[n].append(arr[n])
+    #
+    #         return U, V
+    #
+    #     groups = __conf__.Div['s'].keys()
+    #
+    #     if 0 in self.__groups__:
+    #         points = getattr(self, 'C')
+    #
+    #         if points.Count > 0:
+    #             CountU = self.U
+    #             CountV = self.V
+    #
+    #             pointGrid = {}
+    #             self.Patch.PointGrid[0].append(pointGrid)
+    #             for e in zip(('U', 'V'), PointGrid(points, CountU, CountV)):
+    #                 pointGrid[e[0]] = e[1]
+    #
+    #             srf = NurbsSurface.CreateThroughPoints(
+    #                 points,
+    #                 CountU,
+    #                 CountV,
+    #                 self.DegreeU,
+    #                 self.DegreeV,
+    #                 False,
+    #                 False)
+    #
+    #             cache(srf, 0)
+    #
+    #     if 1 in self.__groups__:
+    #         for div in __conf__.Div['s'][1]['S']:
+    #             points = getattr(self, char)
+    #
+    #             if points.Count > 0:
+    #                 CountU = self.Analysis['U/2']
+    #                 CountV = self.V
+    #
+    #                 pointGrid = {}
+    #                 self.Patch.PointGrid[1].append(pointGrid)
+    #                 for e in zip(('U', 'V'), PointGrid(points, CountU, CountV)):
+    #                     pointGrid[e[0]] = e[1]
+    #
+    #                 srf = NurbsSurface.CreateThroughPoints(
+    #                     points,
+    #                     CountU,
+    #                     CountV,
+    #                     self.DegreeU,
+    #                     self.DegreeV,
+    #                     False,
+    #                     False)
+    #
+    #                 # Build IsoCurves from PointGrid. Do this for 'Div1' surfaces only.
+    #                 # Make2d seems to perform better when given fewer objects properly joined.
+    #                 for i, direction in enumerate(('U', 'V')):
+    #                     isoCurves, seams = self.BuildIsoCurves(srf, pointGrid, direction, 10)
+    #
+    #                     for collection in (self.Patch.IsoCurves, self.IsoCurves):
+    #                         collection[direction].AddRange(isoCurves)
+    #
+    #                 cache(srf, 1)
+    #
+    #     if 2 in self.__groups__:
+    #         for i in range(0, 2, 1):
+    #             for char in range(0, 90 + 15, 15):
+    #                 points = getattr(self, 'S' + str(char) + '_' + str(i))
+    #
+    #                 if points.Count > 0:
+    #                     CountU = self.Analysis['U/2']
+    #                     CountV = getattr(self, 'V' + str(char) + '_' + str(i))
+    #
+    #                     pointGrid = {}
+    #                     self.Patch.PointGrid['Div2'].append(pointGrid)
+    #                     for e in zip(('U', 'V'), PointGrid(points, CountU, CountV)):
+    #                         pointGrid[e[0]] = e[1]
+    #
+    #                     srf = NurbsSurface.CreateThroughPoints(
+    #                         points,
+    #                         CountU,
+    #                         CountV,
+    #                         self.DegreeU,
+    #                         self.DegreeV,
+    #                         False,
+    #                         False)
+    #
+    #                     cache(srf, 2)
+    #
+    # def JoinSurfaces(self, *args):
+    #     '''
+    #     TODO Join Patch subdivisions
+    #     Increase `doc.ModelAbsoluteTolerance` to maximise polysurface inclusion
+    #     '''
+    #     pass
+    #
+    #     tolerance = 0.1
+    #     result = []
+    #
+    #     for i, e in enumerate(__conf__.Div):
+    #         result.append(Brep.JoinBreps(self.Patch.Breps[e], tolerance))
+    #         # for srf in result:
+    #         #     id = doc.Objects.AddBrep(srf)
+    #         #     self.__rendered__(id)
+    #         #     rs.ObjectLayer(id, 'PolySurfaces')
+    #
+    #     return result
+    #
+    # def Render(self, *args):
+    #     def cb(phase, patch, layer, ids):
+    #         layer, colour = layer
+    #
+    #         for i, e in enumerate(__conf__.Div):
+    #             subLayer = rs.AddLayer(util.layer('Surfaces', e, *patch.Phase), colour)
+    #
+    #             for srf in patch.Surfaces[e]:
+    #                 id = doc.Objects.AddSurface(srf)
+    #                 self.__rendered__(id)
+    #                 ids.append(id)
+    #                 rs.ObjectLayer(id, subLayer)
+    #                 self.Rendered['s'][e].append(id)
+    #
+    #     Builder.Render(self, cb, 'Surfaces', *args)
+    #     CurveBuilder.Render(self, *args)
+    #
+    # def Finalize(self):
+    #     # Redundant
+    #     #   * `self.ConvertToBeziers()`
+    #     #   * `self.BuildSilhouette()`
+    #
+    #     self.BuildBoundingBox(self.Surfaces[1])  # self.PolySurfaces['Div1']
+    #     self.SetAxonometricCameraProjection(self.BoundingBox)
+    #
+    #     self.Dimensions()
+    #
+    #     self.CombineCurves()
+    #     self.CombineSurfaces()
+    #     self.BuildPolySurface()
+    #     self.BuildBorders()
+    #     self.BuildWireframe()
+    #     # self.IntersectCurves()
+    #     # Curves, Points = self.IntersectSurfaces()
+    #     # self.SplitAtIntersection()
+    #
+    #     doc.Views.Redraw()
+    #
+    # def CombineSurfaces(self):
+    #     '''
+    #     Returns unique combinations of keys in self.Surfaces[group]
+    #     '''
+    #     for (group, divisions) in __conf__.Div['s'].iteritems():
+    #         if not self.SurfaceCombinations.has_key(group):
+    #             self.SurfaceCombinations[group] = combinations(divisions, 2)
+    #
+    #     return self.SurfaceCombinations
+    #
+    # @staticmethod
+    # def AnalyseSurface(srf):
+    #     '''
+    #     Attempts to step through paramater space by `Rhino.Geometry.NurbsSurface.SpanCount`.
+    #
+    #     Note:
+    #         Do not attempt to divide NURBS parameter space to obtain length.
+    #     See:
+    #         https://ieatbugsforbreakfast.wordpress.com/2013/09/27/curve-parameter-space/
+    #     '''
+    #     _ = {}
+    #     _['U'] = srf.SpanCount(0)  # srf.Points.CountU
+    #     _['V'] = srf.SpanCount(1)  # srf.Points.CountV
+    #     _['minU'], _['maxU'] = srf.Domain(1)
+    #     _['minV'], _['maxV'] = srf.Domain(0)
+    #     _['stepU'] = fabs(_['maxU'] - _['minU']) / float(_['U'] - 1)
+    #     _['stepV'] = fabs(_['maxV'] - _['minV']) / float(_['V'] - 1)
+    #
+    #     # srf.Evaluate()
+    #     # srf.CurvatureAt()
+    #     # srf.GetSurfaceSize()
+    #     # srf.FrameAt()
+    #     # srf.OrderU
+    #     # srf.OrderV
+    #     #
+    #     # brep.SolidOrientation()
+    #     # brep.Loops()
+    #     # brep.Curves2D()
+    #
+    #     return _
+    #
+    # def Dimensions(self):
+    #     '''
+    #     Calculate form bounds and reference points
+    #     '''
+    #     _ = self.Analysis
+    #
+    #     bx = self.BoundingBox
+    #
+    #     origin = bx[0]
+    #
+    #     _['offset'] = (origin - _['docCentre']).Length
+    #
+    #     _['distance'] = [(origin - bx[i]).Length for i in (1, 3, 4)]
+    #     _['diagonal'] = [(bx[a] - bx[b]).Length for (a, b) in combinations((1, 3, 4), 2)]
+    #
+    #     _['centre'] = Point3d(*[origin[i] + (dist / 2.0) for i, dist in enumerate(_['distance'])])
+    #
+    #     dx, dy, dz = _['distance']
+    #     cx, cy, cz = _['centre']
+    #     xy, xz, yz = _['diagonal']
+    #
+    #     _['minX'] = Point3d(cx - (dx / 2.0), cy, cz)
+    #     _['maxX'] = Point3d(cx + (dx / 2.0), cy, cz)
+    #
+    #     _['minY'] = Point3d(cx, cy - (dy / 2.0), cz)
+    #     _['maxY'] = Point3d(cx, cy + (dy / 2.0), cz)
+    #
+    #     _['minZ'] = Point3d(cx, cy, cz - (dz / 2.0))
+    #     _['maxZ'] = Point3d(cx, cy, cz + (dz / 2.0))
+    #
+    #     _['diameter'] = max(_['diagonal'])
+    #     _['radius'] = _['diameter'] / 2.0
+    #
+    #     _['refSphere'] = self.BuildReferenceSphere(_['centre'], _['radius'])
+    #
+    #     return self.Analysis
+    #
+    # def BuildPolySurface(self):
+    #     tolerance = 0.1
+    #
+    #     for i, e in enumerate(__conf__.PolySurfaces):
+    #         layer = rs.AddLayer(util.layer('PolySurfaces', e))
+    #         result = Brep.JoinBreps(self.Breps[e], tolerance)
+    #
+    #         for srf in result:
+    #             id = doc.Objects.AddBrep(srf)
+    #             self.__rendered__(id)
+    #             rs.ObjectLayer(id, layer)
+    #             self.Rendered['S'][e].append(id)
+    #
+    #         self.PolySurfaces[e], = result
+    #
+    #     return self.PolySurfaces
+    #
+    # def IntersectSurfaces(self):
+    #     tolerance = doc.ModelAbsoluteTolerance
+    #
+    #     Curves = CurveList()
+    #     Points = Point3dList()
+    #
+    #     Edges = [(e.PointAtStart, e.PointAtEnd) for e in self.Curves]
+    #
+    #     # Use "smallest" divisions to demarcate patch self-intersection(s)
+    #     for (a, b) in self.SurfaceCombinations[2]:
+    #         a = self.Breps[2][a]
+    #         b = self.Breps[2][b]
+    #
+    #         result, curves, points = Intersect.Intersection.BrepBrep(a, b, tolerance)
+    #
+    #         for point in points:
+    #             pass
+    #
+    #             Points.Add(point)
+    #             id = doc.Objects.AddPoint(point)
+    #             self.__rendered__(id)
+    #             rs.ObjectLayer(id, 'Intersect::Points')
+    #
+    #         for curve in curves:
+    #             C1 = curve.PointAtStart
+    #             C2 = curve.PointAtEnd
+    #
+    #             for edge in Edges:
+    #                 """
+    #                 TODO TRY IsAtSeam
+    #                 http://developer.rhino3d.com/api/RhinoCommonWin/html/M_Rhino_Geometry_Surface_IsAtSeam.htm
+    #                 """
+    #                 E1, E2 = edge
+    #                 match = C1.EpsilonEquals(E1, 0.1) and C2.EpsilonEquals(E2, 0.1) or C1.EpsilonEquals(E2, 0.1) and C2.EpsilonEquals(E1, 0.1)  # reverse
+    #
+    #                 if not match:
+    #                     Curves.Add(curve)
+    #                     id = doc.Objects.AddCurve(curve)
+    #                     self.__rendered__(id)
+    #                     rs.ObjectLayer(id, 'Intersect::Curves')
+    #                     self.Rendered['x'].append(id)
+    #
+    #     return Curves, Points
+    #
+    # def BuildBorders(self):
+    #     # for curve in self.Curves:
+    #     #     id = doc.Objects.AddCurve(curve)
+    #     #     self.__rendered__(id)
+    #     #     rs.ObjectLayer(curve, 'Border::All')
+    #
+    #     for curve in Curve.JoinCurves(self.Outer):
+    #         id = doc.Objects.AddCurve(curve)
+    #         self.__rendered__(id)
+    #         rs.ObjectLayer(id, 'Border::Outer')
+    #
+    # def BuildWireframe(self, join=True):
+    #     for e in ('U', 'V'):
+    #         if join:
+    #             curves = sorted(
+    #                 Curve.JoinCurves(self.IsoCurves[e], 0.1, False),
+    #                 cmp=self.CompareDistance)
+    #         else:
+    #             curves = self.IsoCurves[e]
+    #
+    #         for curve in curves:  # [::self.IsoCurveDensity]
+    #             id = doc.Objects.AddCurve(curve)
+    #             self.__rendered__(id)
+    #             rs.ObjectLayer(id, util.layer('IsoCurves', e))
+    #             # Add id to self.Rendered['i'] to facilitate staged Make2d algorithm.
+    #             self.Rendered['i'][e].append(id)
+    #
+    #     return self.Rendered['i']
+    #
+    # def BuildIsoCurves(self, srf, grid, direction, count=3):
+    #     def InterCrvOnSrfThroughDivisions():
+    #         '''
+    #         FAIL `ExtractIsoCurve` produces discontinuous curves.
+    #         FAIL Synch divisions to world coordinates, else divisions across sympathetic Outer curves will be misaligned.
+    #         '''
+    #         tolerance = doc.ModelAbsoluteTolerance
+    #         points = grid[direction]
+    #         curves = []
+    #
+    #         edge1 = srf.InterpolatedCurveOnSurface(points[0], 0.1)
+    #         edge2 = srf.InterpolatedCurveOnSurface(points[-1], 0.1)
+    #
+    #         div1 = self.DivideCurve(edge1, div=count)
+    #         div2 = self.DivideCurve(edge2, div=count)
+    #
+    #         for i in range(count + 1):
+    #             points = (div1[i], div2[i])  # start, end
+    #             curves.append(srf.InterpolatedCurveOnSurface(points, tolerance))
+    #
+    #         return curves
+    #
+    #     def InterpCrvOnSrfThroughPoints(srf, grid):
+    #         '''
+    #         Increase point samples for higher isocurve density
+    #         '''
+    #         def build(arr, direction):
+    #             segments = CurveList()
+    #
+    #             for points in arr:
+    #                 curve = srf.InterpolatedCurveOnSurface(points, 0.1)
+    #                 segments.Add(curve)
+    #
+    #             return segments
+    #
+    #         isoCurves = CurveList()
+    #         seams = CurveList()
+    #         count = len(grid)
+    #
+    #         # Separate first and last; JoinCurves fails when duplicates overlap at surface seams
+    #         # `CurveList.AddRange(CurveList.GetRange(1, count - 2))`
+    #
+    #         # All segments between first and last positions within patch
+    #         for segment in build(grid[1:-1], direction):
+    #             isoCurves.Add(segment)
+    #
+    #         # First and last segments
+    #         for segment in build(grid[0::(count - 1)], direction):
+    #             seams.Add(segment)
+    #
+    #         return isoCurves, seams
+    #
+    #     return InterpCrvOnSrfThroughPoints(srf, grid[direction])
+    #
+    # @staticmethod
+    # def ExtractIsoCurve(srf, parameter, direction=0):
+    #     isBrep = type(srf) is BrepFace
+    #     U = []
+    #     V = []
+    #
+    #     for i, args in enumerate((('U', 1), ('V', 0))):
+    #         arr = eval(args[0])
+    #
+    #         if direction in (i, 2):
+    #             if isBrep:
+    #                 arr.extend(srf.TrimAwareIsoCurve(i, parameter[args[1]]))
+    #             else:
+    #                 arr.append(srf.IsoCurve(i, parameter[args[1]]))
+    #
+    #     return U, V
+    #
+    # def ConvertToBeziers():
+    #     pass
+    #
+    #     layer = rs.AddLayer('Beziers')
+    #     beziers = []
+    #
+    #     # for srf in self.Surfaces['Div2']:
+    #     #     bezier = Rhino.ConvertSurfaceToBezier(srf, False)
+    #     #     beziers.append(bezier)
+    #     #     rs.ObjectLayer(bezier, layer)
+    #
+    #     # rs.ObjectsByType(rs.filter.polysurface, True)
+    #     # rs.Command('ConvertToBeziers')
+    #
+    #     rs.LayerLocked(layer, True)
+    #
+    #     return beziers
+    #
+    # def SplitAtIntersection(self):
+    #     pass
+    #     # breps = a.Split(b, tolerance)
+    #     #
+    #     # if len(breps) > 0:
+    #     #     rhobj = rs.coercerhinoobject(a, True)
+    #     #     if rhobj:
+    #     #         attr = rhobj.Attributes if rs.ContextIsRhino() else None
+    #     #         result = []
+    #     #
+    #     #         for i in range(len(breps)):
+    #     #             if i == 0:
+    #     #                 doc.Objects.Replace(rhobj.Id, breps[i])
+    #     #                 result.append(rhobj.Id)
+    #     #             else:
+    #     #                 result.append(doc.Objects.AddBrep(breps[i], attr))
+    #     #     else:
+    #     #         result = [doc.Objects.AddBrep(brep) for brep in breps]
+    #
+    # def BuildSilhouette():
+    #     pass
+    #
+    #     rs.CurrentLayer('PolySurfaces')
+    #     rs.Command('_Silhouette')
+    #     for id in rs.ObjectsByType(rs.filter.curve, True):
+    #         rs.ObjectLayer(id, 'Silhouette')
+    #     rs.LayerLocked('Silhouette', True)
 
 
 __builders__ = {

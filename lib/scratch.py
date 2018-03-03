@@ -35,20 +35,20 @@ import itertools
 # Brep.Direction()
 # rs.Command('MakeUniform')
 # rs.Command('MakeUniformUV')
-# Surface.Evaluate()
-# Surface.CurvatureAt()
+#
+#
 # Surface.Fit()
-# Surface.FrameAt()
-# Surface.GetSurfaceSize()
+#
+#
 # Surface.GetUserStrings()
 # Surface.IsoCurve()
 # print(Surface.ShortPath())
 # print(Surface.UserData())
 #
 # brep.CreateShell()
-# brep.SolidOrientation()
-# brep.Loops()
-# brep.Curves2D()
+#
+#
+#
 
 builder = scriptcontext.sticky['builder']
 log = open('./log.txt', 'w')
@@ -934,6 +934,71 @@ def FlipSurface(target, guide):
     #     flag = false
     # return flag
 
+
+
+def SampleCrvsOnSrfAtBroaderPointSamples(density=0):
+    '''
+    TODO This is gonna WORK
+
+
+
+
+    '''
+    def PointGrid(points, CountU, CountV):
+        count = len(points)
+
+        U = [[] for n in range(CountV)]
+        V = []  # [] for n in range(CountU)
+
+        for n in range(0, count, CountV):
+            arr = points.GetRange(n, CountV)
+            V.append(arr)
+
+        for n in range(CountV):
+            for arr in V:
+                U[n].append(arr[n])
+
+        return U, V
+
+    def MakeCurves(grid, direction):
+        def build(arr, direction):
+            for points in arr:
+                curve = rs.AddInterpCurve(points)
+
+        grid = grid[direction]
+        count = len(grid)
+
+        build(grid[1:-1], direction)
+        build(grid[0::(count - 1)], direction)
+
+    params = __conf__.Defaults.copy()
+    params['density'] = density
+
+    builder = PointCloudBuilder(**params)
+    builder.Build()
+
+    CountU = builder.Analysis['U/2']
+    CountV = builder.V
+
+    # len(builder.Points) == (builder.n ** 2) * (builder.U * builder.V)
+    sample = builder.Analysis['U/2'] * builder.V
+
+    print builder.Analysis['U/2'], builder.V
+    for patch in builder.Patches:
+        U, V = PointGrid(patch.Points, builder.U, builder.V)
+        for curve in U:
+            rs.AddCurve(curve)
+
+        # for i in range(2):
+        #     pointGrid = {}
+        #
+        #     for points in util.chunk(list(patch.Points), sample):
+        #         print len(points)
+        #         # for e in zip(('U', 'V'), PointGrid(Point3dList(points), CountU, CountV)):
+        #         #     pointGrid[e[0]] = e[1]
+        #
+        #     # for i, direction in enumerate(('U', 'V')):
+        #     #     MakeCurves(pointGrid, direction)
 
 def ExtendPrimitiveRhinoClasses():
     '''
