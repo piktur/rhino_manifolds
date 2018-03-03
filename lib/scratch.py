@@ -53,8 +53,8 @@ import itertools
 builder = scriptcontext.sticky['builder']
 log = open('./log.txt', 'w')
 
-# srf = builder.Surfaces['Div1'][0]
-# polysrf = builder.PolySurface['Div1']
+# srf = builder.Surfaces[1][0]
+# polysrf = builder.PolySurface[1]
 # brep = Brep.TryConvertBrep(srf)
 
 
@@ -104,7 +104,7 @@ def PlotStartingPoints():
     rs.AddLayer('UnSorted', Color.Violet)
 
     startingPoints = Point3dList()
-    for i, srf in enumerate(builder.Surfaces['Div1']):
+    for i, srf in enumerate(builder.Surfaces[1]):
         startingPoints.Add(srf.Points.GetControlPoint(0, 0).Location)
 
     sorted = rs.SortPoints(startingPoints)
@@ -127,7 +127,7 @@ def DivideOuterBordersAndExtractIsoCurveThroughDivision():
     done = []
     DivU = Point3dList()
 
-    for i, srf in enumerate(builder.Surfaces['Div1']):
+    for i, srf in enumerate(builder.Surfaces[1]):
         for point in points:
             brep = Brep.TryConvertBrep(srf)
             result, parameter = builder.ClosestPoint(brep, point, 0.1)
@@ -143,7 +143,7 @@ def DivideOuterBordersAndExtractIsoCurveThroughDivision():
 
 
 def Normals():
-    for i, srf in enumerate(builder.Surfaces['Div1']):
+    for i, srf in enumerate(builder.Surfaces[1]):
         direction = srf.NormalAt(0, 0)
         rs.AddPoint(direction)
 
@@ -330,7 +330,7 @@ def OrientSurfacesToReference(builder):
 
     results = []
 
-    for srf in builder.Surfaces['Div1']:  # srf = builder.Surfaces['Div1'][0]
+    for srf in builder.Surfaces[1]:  # srf = builder.Surfaces[1][0]
         for (u, v) in SampleSurfacePoints(srf):
             # srfTargetPlane = srf.FrameAt(u, v)[1]
             srfPoint = srf.Points.GetControlPoint(u, v).Location
@@ -354,7 +354,7 @@ def OrientSurfacesToReference(builder):
             if compare(refNormal, srfNormal, 'Z'):
                 pass
 
-                id = builder.Rendered['Surfaces']['Div1'][0]
+                id = builder.Rendered['Surfaces'][1][0]
                 rs.FlipSurface(id, True)
 
             # for i, axis in enumerate(('X', 'Y')):  # 'Z'
@@ -562,10 +562,10 @@ def OrderPatchesByCurveContinuity():
     #     centre = curve.PointAtNormalizedLength(0.5)
     #     rs.AddTextDot(i, centre)
     #
-    #     for srf in builder.Patches[patchIndex].Surfaces['Div1']:
+    #     for srf in builder.Patches[patchIndex].Surfaces[1]:
     #         srf.Transpose()
     #
-    #     for brep in builder.Patches[patchIndex].Breps['Div1']:
+    #     for brep in builder.Patches[patchIndex].Breps[1]:
     #         brep.Flip()
     #         # print brep.Faces[0].OrientationIsReversed
 
@@ -635,7 +635,7 @@ def InterpCrvThroguhControlPoints(srf, grid):
     # for point in points:
     #     doc.Objects.AddPoint(point)
 
-    # srf = builder.Rendered['Surfaces']['Div1'][0]
+    # srf = builder.Rendered['Surfaces'][1][0]
     # rs.AddInterpCrvOnSrfUV()
     # rs.AddInterpCrvOnSrf(srf, V[2])
     # Surface.InterpolatedCurveOnSurface()
@@ -692,7 +692,7 @@ def SeperateUVFromExtractWireframe(srf):
 
     # Generate a denser wireframe and select sub samples from it.
     for i in range(1, 5, 1):
-        ids = builder.Rendered['PolySurface']['Div1']
+        ids = builder.Rendered['PolySurface'][1]
         layer = rs.AddLayer('::'.join(('Wireframe', str(i))))
 
         U = CurveList()
@@ -776,7 +776,7 @@ for n in range(2):
 for patch in builder.Patches:
     # patch = builder.Patches[n]
     # for n2 in range(2):
-    for i, srf in enumerate(patch.Surfaces['Div1']):
+    for i, srf in enumerate(patch.Surfaces[1]):
         pass
 
 
@@ -785,12 +785,12 @@ for patch in builder.Patches:
 # SeperateUVFromExtractWireframe()
 
 # for patch in builder.Patches:
-#     srf = patch.Surfaces['Div1'][0]
-#     grid = patch.PointGrid['Div1'][0]
+#     srf = patch.Surfaces[1][0]
+#     grid = patch.PointGrid[1][0]
 
 patch = builder.Patches[0]  # for patch in builder.Patches:
 
-for n, srf in enumerate(patch.Surfaces['Div1']):
+for n, srf in enumerate(patch.Surfaces[1]):
     pass
     # REPORT :
     #   *
@@ -824,7 +824,7 @@ def Make2d():
 
     rs.SelectObjects(
         # *self.Rendered['IsoCurves']['U'], # Do a subset of either U or V at a time
-        builder.Rendered['Surfaces']['Div1'] #  or *self.Rendered['PolySurface']['Div1']
+        builder.Rendered['Surfaces'][1] #  or *self.Rendered['PolySurface'][1]
     )
 
     RunScript(
@@ -934,71 +934,6 @@ def FlipSurface(target, guide):
     #     flag = false
     # return flag
 
-
-
-def SampleCrvsOnSrfAtBroaderPointSamples(density=0):
-    '''
-    TODO This is gonna WORK
-
-
-
-
-    '''
-    def PointGrid(points, CountU, CountV):
-        count = len(points)
-
-        U = [[] for n in range(CountV)]
-        V = []  # [] for n in range(CountU)
-
-        for n in range(0, count, CountV):
-            arr = points.GetRange(n, CountV)
-            V.append(arr)
-
-        for n in range(CountV):
-            for arr in V:
-                U[n].append(arr[n])
-
-        return U, V
-
-    def MakeCurves(grid, direction):
-        def build(arr, direction):
-            for points in arr:
-                curve = rs.AddInterpCurve(points)
-
-        grid = grid[direction]
-        count = len(grid)
-
-        build(grid[1:-1], direction)
-        build(grid[0::(count - 1)], direction)
-
-    params = __conf__.Defaults.copy()
-    params['density'] = density
-
-    builder = PointCloudBuilder(**params)
-    builder.Build()
-
-    CountU = builder.Analysis['U/2']
-    CountV = builder.V
-
-    # len(builder.Points) == (builder.n ** 2) * (builder.U * builder.V)
-    sample = builder.Analysis['U/2'] * builder.V
-
-    print builder.Analysis['U/2'], builder.V
-    for patch in builder.Patches:
-        U, V = PointGrid(patch.Points, builder.U, builder.V)
-        for curve in U:
-            rs.AddCurve(curve)
-
-        # for i in range(2):
-        #     pointGrid = {}
-        #
-        #     for points in util.chunk(list(patch.Points), sample):
-        #         print len(points)
-        #         # for e in zip(('U', 'V'), PointGrid(Point3dList(points), CountU, CountV)):
-        #         #     pointGrid[e[0]] = e[1]
-        #
-        #     # for i, direction in enumerate(('U', 'V')):
-        #     #     MakeCurves(pointGrid, direction)
 
 def ExtendPrimitiveRhinoClasses():
     '''
