@@ -10,6 +10,7 @@ from scriptcontext import doc, sticky
 # from rhinoscriptsyntax import GetBoolean, GetInteger,
 #   GetReal, AddObjectsToGroup, AddGroup, frange
 import rhinoscriptsyntax as rs
+import Rhino.RhinoMath as rmath
 from Rhino.Geometry import Brep, BrepFace, ControlPoint, Curve, CurveKnotStyle, Mesh, NurbsCurve, NurbsSurface, Point2d, Point3d, Vector3d, Intersect, Interval, Sphere
 from Rhino.Collections import Point3dList, CurveList
 import Rhino
@@ -18,18 +19,52 @@ import export
 from export import fname
 from events import EventHandler
 
+
 reload(util)
 reload(export)
 
 
 class Config:
-    __slots__ = ['IsoCurves', 'Log']
+    __slots__ = ['IsoCurves', 'Log', 'Div', 'PolySurfaces']
+
+    @staticmethod
+    def __div__(*args):
+        '''
+        Returns variable names for surface divisions
+        '''
+        arr = []
+        maxV = int(rmath.ToDegrees(pi / 2.0))  # 90 degrees
+        stepV = int(rmath.ToDegrees(pi / 12.0))  # 15 degrees
+        for u in range(2):  # xi
+            for v in range(0, maxV + stepV, stepV):  # theta
+                arr.append(''.join([str(e) for e in args + (v, '_', u)]))
+
+        return arr
 
     def __init__(self, **kwargs):
         self.IsoCurves = kwargs['isoCurves']
         self.Log = open(kwargs['log'], 'w')
         self.Div = ['Div' + str(n) for n in kwargs['div']]
         self.PolySurfaces = ['Div' + str(n) for n in kwargs['polySurface']]
+
+        self.Div = {}
+        self.Div['C'] = []
+        self.Div['M'] = []
+        self.Div['S'] = []
+        self.Var['C'] = kwargs
+        self.Var['S'] = kwargs
+        self.Var['M'] = kwargs
+
+        for char in ('S', 'U', 'V'):
+            self.__div__(char)
+
+    @staticmethod
+    def RDiv():
+        return ['R' + str(i) for i in range(3)]
+
+    @staticmethod
+    def XDiv():
+        return ['X' + str(i) for i in range(10)]
 
 
 __conf__ = Config(
@@ -386,8 +421,7 @@ class Builder:
 
         self.Layers = [
             'BoundingBox',
-            'Camera',
-            '2D'
+            'Camera'
         ]
 
         # Floating point precision.
@@ -398,20 +432,22 @@ class Builder:
         # (theta, xi) = (0, 0) and (theta, xi) = (pi / 2, 0)
         # [Table 1](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
         # Performance reduced if > 55
-        self.V = self.U = 55  # 11, 21, 55, 107, 205 [110]
+        self.V = self.U = 21  # 11, 21, 55, 107, 205 [110]
         self.Degree = self.DegreeV = self.DegreeU = 3
 
         # Note: Polysurface created if U and V degrees differ.
         self.CountV = self.CountU = 0
 
+        # xi
         self.MinU = -1
         self.MaxU = 1
         self.MidU = (self.MinU + self.MaxU) / 2.0  # 0
         # deduct 1 to accomodate `rs.frange` zero offset
         self.StepU = fabs(self.MaxU - self.MinU) / (self.U - 1.0)
 
+        # theta as radians
         self.MinV = 0
-        self.MaxV = float(pi / 2)
+        self.MaxV = pi / 2.0
         self.MidV = (self.MinV + self.MaxV) / 2.0  # pi / 4
         # deduct 1 to accomodate `rs.frange` zero offset
         self.StepV = fabs(self.MaxV - self.MinV) / (self.V - 1.0)
@@ -524,7 +560,7 @@ class Builder:
 
             self.Events.publish('k1.out', k1)
 
-        self.AddLayers()
+        self.AddLayers(self.Layers)
         self.Render()
 
     def Finalize(self):
@@ -714,6 +750,39 @@ class Builder:
         elif a < b:
             return 1
 
+    def BuildBoundingBox(self, objects):
+        self.BoundingBox = rs.BoundingBox(objects)
+
+        for i, point in enumerate(self.BoundingBox):
+            # id = doc.Objects.AddTextDot(str(i), p)
+            id = doc.Objects.AddPoint(point)
+            rs.ObjectLayer(id, 'BoundingBox')
+
+        return self.BoundingBox
+
+    @staticmethod
+    def BoxAnalysis(points):
+        bx = Brep.CreateFromBox(points)
+
+        Geometry.AreaMassProperties.Compute(bx)
+        Geometry.VolumeMassProperties.Compute(bx)
+
+    @staticmethod
+    def SetAxonometricCameraProjection(bx):  # Isometric
+        ln = rs.AddLine(bx[4], bx[2])
+        rs.ObjectLayer(ln, 'Camera')
+        rs.MoveObject(ln, bx[4] - bx[2])
+        ln = rs.coerceline(ln)
+
+        rs.ViewProjection('Perspective', 1)
+        rs.ViewCameraTarget('Perspective', ln.From, ln.To)
+        rs.ZoomBoundingBox(bx, all=True)
+        rs.AddNamedView('Base', 'Perspective')
+
+        for layer in ('Camera', 'BoundingBox'):
+            rs.LayerVisible(layer, False)
+            rs.LayerLocked(layer, True)
+
     @staticmethod
     def BuildReferenceSphere(centre=(0, 0, 0), radius=150):
         center = rs.coerce3dpoint(centre)
@@ -778,6 +847,20 @@ class Builder:
 
         return Color.FromArgb(r, g, b)
 
+    @staticmethod
+    def AddLayers(layers):
+        for i in range(1, 5 + 1):
+            layer = ' '.join(('Layer', '0' + str(i)))
+            if rs.IsLayer(layer):
+                rs.DeleteLayer(layer)
+
+        for layer in layers:
+            if not rs.IsLayer(layer):
+                layer = rs.AddLayer(layer)
+                rs.LayerPrintColor(layer, Color.Black)
+                rs.LayerPrintWidth(layer, 0.4)  # mm
+                # rs.LayerVisible(layer, False)
+
     def __rendered__(self, obj):
         '''
         Confirm `obj` present in document Guid
@@ -811,19 +894,6 @@ class Builder:
 
         return ids
 
-    def AddLayers(self):
-        for str in ('01', '02', '03', '04', '05'):
-            layer = ' '.join(('Layer', str))
-            if rs.IsLayer(layer):
-                rs.DeleteLayer(layer)
-
-        for layer in self.Layers:
-            if not rs.IsLayer(layer):
-                layer = rs.AddLayer(layer)
-                rs.LayerPrintColor(layer, Color.Black)
-                rs.LayerPrintWidth(layer, 0.4)  # mm
-                # rs.LayerVisible(layer, False)
-
 
 class PointCloudBuilder(Builder):
     __slots__ = Builder.__slots__
@@ -848,15 +918,16 @@ class PointCloudBuilder(Builder):
 
 
 class MeshBuilder(Builder):
-    __slots__ = Builder.__slots__ + ['MeshA', 'MeshB', 'MeshCount']
+    __slots__ = Builder.__slots__ + ['MeshCount'] + __conf__.Div['Mesh']
 
     def __init__(self, *args):
         Builder.__init__(self, *args)
 
         self.Layers.append('Meshes')
-        self.MeshA = None
-        self.MeshB = None
         self.MeshCount = 0
+
+        for div in __conf__.Div['Mesh']:
+            setattr(self, div, None)
 
     def __listeners__(self):
         listeners = Builder.__listeners__(self)
@@ -870,8 +941,8 @@ class MeshBuilder(Builder):
     def AddMesh(self, *args):
         # k1, k2 = args
 
-        self.Patch.MeshA = Mesh()
-        self.Patch.MeshB = Mesh()
+        for div in __conf__.Div['Mesh']:
+            setattr(self.Patch, div, Mesh())
 
     def IncrementMeshCount(self, *args):
         k1, k2, a, b = args
@@ -901,17 +972,17 @@ class MeshBuilder(Builder):
 
         if a > self.MinU and b > self.MinV:
             if self.Analysis['xi <= midU']:
-                self.MeshA = Mesh()
-                self.BuildFaces(self.MeshA, *args)
-                self.Patch.MeshA.Append(self.MeshA)
+                self.M1 = Mesh()
+                self.BuildFaces(self.M1, *args)
+                self.Patch.M1.Append(self.M1)
             else:
-                self.MeshB = Mesh()
-                self.BuildFaces(self.MeshB, *args)
-                self.Patch.MeshB.Append(self.MeshB)
+                self.M2 = Mesh()
+                self.BuildFaces(self.M2, *args)
+                self.Patch.M2.Append(self.M2)
 
     def WeldMesh(self, *args):
-        self.Patch.MeshA.Weld(pi)
-        self.Patch.MeshB.Weld(pi)
+        for div in __conf__.Div['Mesh']:
+            getattr(self.Patch, div).Weld(pi)
 
     def Render(self, *args):
         parent = rs.AddLayer('Meshes')
@@ -919,7 +990,8 @@ class MeshBuilder(Builder):
         def cb(phase, patch, layer, ids):
             layer = rs.AddLayer(*layer)
 
-            for i, mesh in enumerate((patch.MeshA, patch.MeshB)):
+            for i, div in enumerate(__conf__.Div['Mesh']):
+                mesh = getattr(patch, div)
                 id = doc.Objects.AddMesh(mesh)
                 ids.append(id)
                 rs.ObjectLayer(id, layer)
@@ -928,22 +1000,6 @@ class MeshBuilder(Builder):
 
 
 class CurveBuilder(Builder):
-    @staticmethod
-    def RDiv():
-        arr = []
-        for char in list(string.digits)[:3]:
-            arr.append('R' + char)
-
-        return arr
-
-    @staticmethod
-    def XDiv():
-        arr = []
-        for char in list(string.digits)[:10]:
-            arr.append('X' + char)
-
-        return arr
-
     __slots__ = Builder.__slots__ + [
         'Curves',
         'CurveCombinations',
@@ -1111,14 +1167,14 @@ class CurveBuilder(Builder):
         X = CurveList()
 
         for i, points in enumerate(map(lambda div: getattr(self, div), self.RDiv)):
-            curve = Builder.BuildInterpolatedCurve(points, self.Degree)
+            curve = self.BuildInterpolatedCurve(points, self.Degree)
             for collection in (R, self.R, self.Curves):
                 collection.Add(curve)
             if i != 1:
                 self.Outer.Add(curve)
 
         for i, points in enumerate(map(lambda div: getattr(self, div), self.XDiv)):
-            curve = Builder.BuildInterpolatedCurve(points, self.Degree)
+            curve = self.BuildInterpolatedCurve(points, self.Degree)
             for collection in (X, self.X, self.Curves):
                 collection.Add(curve)
 
@@ -1132,8 +1188,8 @@ class CurveBuilder(Builder):
                         points = list(points)
                         count = int(self.Analysis['V/2'] - 1)
                         curves.extend([
-                            Builder.BuildInterpolatedCurve(points[0:-count], self.Degree),
-                            Builder.BuildInterpolatedCurve(points[count:], self.Degree)
+                            self.BuildInterpolatedCurve(points[0:-count], self.Degree),
+                            self.BuildInterpolatedCurve(points[count:], self.Degree)
                         ])
                     else:
                         curves.append(self.BuildInterpolatedCurve(points, self.Degree))
@@ -1151,7 +1207,7 @@ class CurveBuilder(Builder):
             rs.ObjectLayer(id, layer)
             self.Rendered['Curves'].append(id)
 
-            # Builder.FindCurveCentre(curve, '[' + str(k1) + ',' + str(k2) + ']')
+            # self.FindCurveCentre(curve, '[' + str(k1) + ',' + str(k2) + ']')
 
         if __conf__.IsoCurves:
             # Although better aesthetically IsoCurves generated from points aren't within
@@ -1267,33 +1323,6 @@ class SurfaceBuilder(CurveBuilder):
     Build quadrilateral surfaces.
     See [Example](https://bitbucket.org/snippets/kunst_dev/X894E8)
     '''
-    @staticmethod
-    def Div():
-        arr = []
-        for i in range(0, 2, 1):
-            for char in range(0, 90 + 15, 15):
-                arr.append('S' + str(char) + '_' + str(i))
-
-        return arr
-
-    @staticmethod
-    def UDiv():
-        arr = []
-        for i in range(0, 2, 1):
-            for char in range(0, 90 + 15, 15):
-                arr.append('U' + str(char) + '_' + str(i))
-
-        return arr
-
-    @staticmethod
-    def VDiv():
-        arr = []
-        for i in range(0, 2, 1):
-            for char in range(0, 90 + 15, 15):
-                arr.append('V' + str(char) + '_' + str(i))
-
-        return arr
-
     __slots__ = CurveBuilder.__slots__ + [
         '__points__',
         'Surfaces',
@@ -1338,9 +1367,9 @@ class SurfaceBuilder(CurveBuilder):
             self.BrepCombinations[div] = None
             self.PolySurfaces[div] = None
 
-        self.Div = SurfaceBuilder.Div()
-        self.UDiv = SurfaceBuilder.UDiv()
-        self.VDiv = SurfaceBuilder.VDiv()
+        self.Div = __conf__.Div()
+        self.UDiv = __conf__.UDiv()
+        self.VDiv = __conf__.VDiv()
 
     def __listeners__(self):
         listeners = CurveBuilder.__listeners__(self)
@@ -1371,14 +1400,23 @@ class SurfaceBuilder(CurveBuilder):
         return self.BrepCombinations
 
     def AddSurfaces(self, *args):
-        for div in self.Div:
-            setattr(self, div, Point3dList())
-        for div in self.UDiv:
-            setattr(self, div, 0)
-        for div in self.VDiv:
-            setattr(self, div, 0)
-        for div in ('A', 'B', 'C'):
-            setattr(self, div, Point3dList())
+        '''
+        Reset parameter counts and add a point repository per division
+        '''
+        if 'Div0' in __conf__.Div:
+            setattr(self, 'C', Point3dList())
+
+        if 'Div1' in __conf__.Div:
+            for div in ('A', 'B'):
+                setattr(self, div, Point3dList())
+
+        if 'Div2' in __conf__.Div:
+            for div in __conf__.Div2['S']:
+                setattr(self, div, Point3dList())
+            for div in __conf__.Div2['U']:
+                setattr(self, div, 0)
+            for div in __conf__.Div2['V']:
+                setattr(self, div, 0)
 
     def AddSurfaceSubdivision(self, *args):
         '''
@@ -1403,56 +1441,59 @@ class SurfaceBuilder(CurveBuilder):
     def PlotSurface(self, *args):
         k1, k2, a, b = args
 
-        if self.Analysis['xi <= midU']:
-            self.A.Add(self.Point)
-        if self.Analysis['xi >= midU']:
-            self.B.Add(self.Point)
+        if 'Div0' in __conf__.Div:
+            self.C.Add(self.Point)
 
-        self.C.Add(self.Point)
-
-        if self.Analysis['theta <= 30']:
-            if self.Analysis['xi == minU']:
-                self.V0_0 += 1
-            elif self.Analysis['xi == midU']:
-                self.V0_1 += 1
-
+        if 'Div1' in __conf__.Div:
             if self.Analysis['xi <= midU']:
-                self.S0_0.Add(self.Point)
+                self.A.Add(self.Point)
             if self.Analysis['xi >= midU']:
-                self.S0_1.Add(self.Point)
+                self.B.Add(self.Point)
 
-        if self.Analysis['theta >= 30'] and self.Analysis['theta <= 45']:
-            if self.Analysis['xi == minU']:
-                self.V30_0 += 1
-            elif self.Analysis['xi == midU']:
-                self.V30_1 += 1
+        if 'Div2' in __conf.Div:
+            if self.Analysis['theta <= 30']:
+                if self.Analysis['xi == minU']:
+                    self.V0_0 += 1
+                elif self.Analysis['xi == midU']:
+                    self.V0_1 += 1
 
-            if self.Analysis['xi <= midU']:
-                self.S30_0.Add(self.Point)
-            if self.Analysis['xi >= midU']:
-                self.S30_1.Add(self.Point)
+                if self.Analysis['xi <= midU']:
+                    self.S0_0.Add(self.Point)
+                if self.Analysis['xi >= midU']:
+                    self.S0_1.Add(self.Point)
 
-        if self.Analysis['theta >= 45'] and self.Analysis['theta <= 60']:
-            if self.Analysis['xi == minU']:
-                self.V45_0 += 1
-            elif self.Analysis['xi == midU']:
-                self.V45_1 += 1
+            if self.Analysis['theta >= 30'] and self.Analysis['theta <= 45']:
+                if self.Analysis['xi == minU']:
+                    self.V30_0 += 1
+                elif self.Analysis['xi == midU']:
+                    self.V30_1 += 1
 
-            if self.Analysis['xi <= midU']:
-                self.S45_0.Add(self.Point)
-            if self.Analysis['xi >= midU']:
-                self.S45_1.Add(self.Point)
+                if self.Analysis['xi <= midU']:
+                    self.S30_0.Add(self.Point)
+                if self.Analysis['xi >= midU']:
+                    self.S30_1.Add(self.Point)
 
-        if self.Analysis['theta >= 60'] and self.Analysis['theta <= 90']:
-            if self.Analysis['xi == minU']:
-                self.V60_0 += 1
-            elif self.Analysis['xi == midU']:
-                self.V60_1 += 1
+            if self.Analysis['theta >= 45'] and self.Analysis['theta <= 60']:
+                if self.Analysis['xi == minU']:
+                    self.V45_0 += 1
+                elif self.Analysis['xi == midU']:
+                    self.V45_1 += 1
 
-            if self.Analysis['xi <= midU']:
-                self.S60_0.Add(self.Point)
-            if self.Analysis['xi >= midU']:
-                self.S60_1.Add(self.Point)
+                if self.Analysis['xi <= midU']:
+                    self.S45_0.Add(self.Point)
+                if self.Analysis['xi >= midU']:
+                    self.S45_1.Add(self.Point)
+
+            if self.Analysis['theta >= 60'] and self.Analysis['theta <= 90']:
+                if self.Analysis['xi == minU']:
+                    self.V60_0 += 1
+                elif self.Analysis['xi == midU']:
+                    self.V60_1 += 1
+
+                if self.Analysis['xi <= midU']:
+                    self.S60_0.Add(self.Point)
+                if self.Analysis['xi >= midU']:
+                    self.S60_1.Add(self.Point)
 
     def BuildSurface(self, *args):
         '''
@@ -1611,12 +1652,8 @@ class SurfaceBuilder(CurveBuilder):
         #   * `self.ConvertToBeziers()`
         #   * `self.BuildSilhouette()`
 
-        self.BuildBoundingBox()
-        self.SetAxonometricCameraProjection()
-
-        for layer in ('Camera', 'BoundingBox'):
-            rs.LayerVisible(layer, False)
-            rs.LayerLocked(layer, True)
+        self.BuildBoundingBox(self.Surfaces['Div1'])  # self.PolySurfaces['Div1']
+        self.SetAxonometricCameraProjection(self.BoundingBox)
 
         self.Dimensions()
 
@@ -1645,12 +1682,21 @@ class SurfaceBuilder(CurveBuilder):
         _ = {}
         _['U'] = srf.SpanCount(0)  # srf.Points.CountU
         _['V'] = srf.SpanCount(1)  # srf.Points.CountV
-        # _[''] = srf.OrderU
-        # _[''] = srf.OrderV
         _['minU'], _['maxU'] = srf.Domain(1)
         _['minV'], _['maxV'] = srf.Domain(0)
         _['stepU'] = fabs(_['maxU'] - _['minU']) / float(_['U'] - 1)
         _['stepV'] = fabs(_['maxV'] - _['minV']) / float(_['V'] - 1)
+
+        # srf.Evaluate()
+        # srf.CurvatureAt()
+        # srf.GetSurfaceSize()
+        # srf.FrameAt()
+        # srf.OrderU
+        # srf.OrderV
+        #
+        # brep.SolidOrientation()
+        # brep.Loops()
+        # brep.Curves2D()
 
         return _
 
@@ -1660,14 +1706,14 @@ class SurfaceBuilder(CurveBuilder):
         '''
         _ = self.Analysis
 
-        box = self.BoundingBox
+        bx = self.BoundingBox
 
-        origin = box[0]
+        origin = bx[0]
 
         _['offset'] = (origin - _['docCentre']).Length
 
-        _['distance'] = [(origin - box[i]).Length for i in (1, 3, 4)]
-        _['diagonal'] = [(box[a] - box[b]).Length for (a, b) in combinations((1, 3, 4), 2)]
+        _['distance'] = [(origin - bx[i]).Length for i in (1, 3, 4)]
+        _['diagonal'] = [(bx[a] - bx[b]).Length for (a, b) in combinations((1, 3, 4), 2)]
 
         _['centre'] = Point3d(*[origin[i] + (dist / 2.0) for i, dist in enumerate(_['distance'])])
 
@@ -1690,12 +1736,6 @@ class SurfaceBuilder(CurveBuilder):
         _['refSphere'] = self.BuildReferenceSphere(_['centre'], _['radius'])
 
         return self.Analysis
-
-    def BoxAnalysis(self):
-        box = Brep.CreateFromBox(self.BoundingBox)
-
-        Geometry.AreaMassProperties.Compute(box)
-        Geometry.VolumeMassProperties.Compute(box)
 
     def BuildPolySurface(self):
         tolerance = 0.1
@@ -1768,29 +1808,6 @@ class SurfaceBuilder(CurveBuilder):
             self.__rendered__(id)
             rs.ObjectLayer(id, 'Border::Outer')
 
-    def BuildBoundingBox(self):
-        # self.BoundingBox = rs.BoundingBox(self.PolySurfaces['Div1'])
-        self.BoundingBox = rs.BoundingBox(self.Surfaces['Div1'])
-
-        for i, point in enumerate(self.BoundingBox):
-            # id = doc.Objects.AddTextDot(str(i), p)
-            id = doc.Objects.AddPoint(point)
-            rs.ObjectLayer(id, 'BoundingBox')
-
-        return self.BoundingBox
-
-    def SetAxonometricCameraProjection(self):  # Isometric
-        bx = self.BoundingBox
-        ln = rs.AddLine(bx[4], bx[2])
-        rs.ObjectLayer(ln, 'Camera')
-        rs.MoveObject(ln, bx[4] - bx[2])
-        ln = rs.coerceline(ln)
-
-        rs.ViewProjection('Perspective', 1)
-        rs.ViewCameraTarget('Perspective', ln.From, ln.To)
-        rs.ZoomBoundingBox(bx, all=True)
-        rs.AddNamedView('Base', 'Perspective')
-
     def BuildWireframe(self, join=True):
         for e in ('U', 'V'):
             if join:
@@ -1819,14 +1836,14 @@ class SurfaceBuilder(CurveBuilder):
             points = grid[direction]
             curves = []
 
-            Edge1 = srf.InterpolatedCurveOnSurface(points[0], 0.1)
-            Edge2 = srf.InterpolatedCurveOnSurface(points[-1], 0.1)
+            edge1 = srf.InterpolatedCurveOnSurface(points[0], 0.1)
+            edge2 = srf.InterpolatedCurveOnSurface(points[-1], 0.1)
 
-            Div1 = self.DivideCurve(Edge1, div=count)
-            Div2 = self.DivideCurve(Edge2, div=count)
+            div1 = self.DivideCurve(edge1, div=count)
+            div2 = self.DivideCurve(edge2, div=count)
 
             for i in range(count + 1):
-                points = (Div1[i], Div2[i])  # start, end
+                points = (div1[i], div2[i])  # start, end
                 curves.append(srf.InterpolatedCurveOnSurface(points, tolerance))
 
             return curves
@@ -1863,7 +1880,8 @@ class SurfaceBuilder(CurveBuilder):
 
         return InterpCrvOnSrfThroughPoints(srf, grid[direction])
 
-    def ExtractIsoCurve(self, srf, parameter, direction=0):
+    @staticmethod
+    def ExtractIsoCurve(srf, parameter, direction=0):
         isBrep = type(srf) is BrepFace
         U = []
         V = []
@@ -1879,7 +1897,8 @@ class SurfaceBuilder(CurveBuilder):
 
         return U, V
 
-    def DivideCurve(self, curve, div):
+    @staticmethod
+    def DivideCurve(curve, div):
         '''
         `Curve.DivideByLength` varies according to curvature
         unlike `Curve.DivideEquidistant`
