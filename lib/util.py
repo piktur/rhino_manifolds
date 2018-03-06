@@ -1,8 +1,11 @@
+import System.Guid
 from System.Drawing import Color
-import System.Guid.Empty
 from scriptcontext import doc
 import rhinoscriptsyntax as rs
 import json
+from Rhino.Geometry import Point3d, Brep, BrepFace, Surface, NurbsSurface, Interval
+from Rhino.Collections import Point3dList, CurveList
+
 
 def Halt():
     '''
@@ -71,16 +74,25 @@ def rendered(obj):
     return True
 
 
-def render(geometry, layer):
-    id = doc.Objects.Add(geometry)
+def render(geometry, layer=None):
+    if isinstance(geometry, Point3d):
+        id = doc.Objects.AddPoint(geometry)
+    else:
+        id = doc.Objects.Add(geometry)
     rendered(id)
 
     if layer:
-        if not rs.IsLayer(layer):
-            rs.AddLayer(layer)
-        rs.ObjectLayer(id, layer)
+        str = AddLayer(layer)
+        rs.ObjectLayer(id, str)
 
     return id
+
+
+def AddLayer(str, colour=None):
+    if not rs.IsLayer(str):
+        rs.AddLayer(str, colour)
+
+    return str
 
 
 def layer(*args):
@@ -113,7 +125,7 @@ class IsoGrid():
         '__conf__'
     ]
 
-    def __init__(self, srf, U, V, TrimAware=True, Phase=None):
+    def __init__(self, srf, U, V, TrimAware=True, Phase=()):
         self.TrimAware = TrimAware
         self.isSurface = isinstance(srf, Surface)
         self.isBrepFace = isinstance(srf, BrepFace)
@@ -125,7 +137,8 @@ class IsoGrid():
         self.U = U
         self.V = V
         self.Curves = {CurveList() for char in 'UV'}
-        self.SubSurfaces = {n: {} for n in Phase}
+        # self.SubSurfaces = {Phase[0]: {Phase[1]: {}}}
+        self.SubSurfaces = []
         self.Phase = Phase
 
         # subSurfaces[patch.Phase] = {}
@@ -243,7 +256,7 @@ class IsoGrid():
                 i2 = (i1 + 1)
                 i3 = (i0 + 1)
 
-                if self.trimAware:
+                if self.TrimAware:
                     if self.inc[i0] or self.inc[i1] or (self.inc[i2] or self.inc[i3]):
                         self.Mesh.Faces.AddFace(i0, i1, i2, i3)
                 elif self.inc[i0] and self.inc[i1] and (self.inc[i2] and self.inc[i3]):
@@ -264,10 +277,14 @@ class IsoGrid():
         i = 0
 
         while countU <= maxU:
+            # self.SubSurfaces[countU] = {}
+
             maxV = self.V - 1  # zero offset
             countV = 0
 
             while countV <= maxV:
+                edges = CurveList()
+
                 i0 = countU * (self.V + 1) + countV
                 i1 = i0 + self.V + 1
                 i2 = i1 + 1
@@ -276,11 +293,19 @@ class IsoGrid():
                 c0, c1, c2, c3 = [
                     self.Parameters[eval('i' + str(n))] for n in self.__conf__['quad']
                 ]
-                edges = CurveList()
-                for t in self.__conf__['combinations']:
-                    arr = rs.coerce2dpointlist([eval('c' + str(n)) for n in t])
-                    curve = self.Surface.InterpolatedCurveOnSurfaceUV(arr, tolerance)
-                    edges.Add(curve)
+                if self.TrimAware:
+                    if self.inc[i0] or self.inc[i1] or (self.inc[i2] or self.inc[i3]):
+                        for t in self.__conf__['combinations']:
+                            vertex = rs.coerce2dpointlist([eval('c' + str(n)) for n in t])
+                            curve = self.Surface.InterpolatedCurveOnSurfaceUV(vertex, tolerance)
+                            if curve:
+                                edges.Add(curve)
+                    elif self.inc[i0] and self.inc[i1] and (self.inc[i2] and self.inc[i3]):
+                        for t in self.__conf__['combinations']:
+                            vertex = rs.coerce2dpointlist([eval('c' + str(n)) for n in t])
+                            curve = self.Surface.InterpolatedCurveOnSurfaceUV(vertex, tolerance)
+                            if curve:
+                                edges.Add(curve)
 
                 subSrf, err = NurbsSurface.CreateNetworkSurface(
                     edges,
@@ -290,8 +315,10 @@ class IsoGrid():
                     1.0
                 )
 
-                self.SubSurfaces[i][j] = subSrf
-                __path__(self.Phase + (i, j))
+                if subSrf:
+                    self.SubSurfaces.append(subSrf)
+                # self.SubSurfaces[countU][countV] = subSrf
+                # __path__(self.Phase + (countU, countV))
 
                 countV += 1
             countU += 1
@@ -332,7 +359,7 @@ class IsoGrid():
         v = 1.0 / float(self.V)
 
         for i in range(self.U):
-            self.SubSurfaces[i] = {}
+            # self.SubSurfaces[i] = {}
 
             for j in range(self.V):
                 midPoint = self.Surface.PointAt((i * u) + (0.5 * u), (j * v) + (0.5 * v))
@@ -368,10 +395,11 @@ class IsoGrid():
                     0.1,
                     1.0
                 )
-                id = doc.Objects.AddSurface(subSrf)
 
-                self.SubSurfaces[i][j] = subSrf
-                __path__(self.Phase + (i, j))
+                if subSrf:
+                    self.SubSurfaces.append(subSrf)
+                # self.SubSurfaces[i][j] = subSrf
+                # __path__(self.Phase + (i, j))
 
                 midPoints.Add(midPoint)
                 normals.append(vector)

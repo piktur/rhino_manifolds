@@ -113,12 +113,95 @@ def ExtractIsoCurves(srf=None, div=None):
 builder = scriptcontext.sticky['builder']
 log = open('./log.txt', 'w')
 
-patch = builder.Patches[0]
-srf1 = patch.Surfaces[1]['S']['S_1']
+# patch = builder.Patches[0]
+# srf1 = patch.Surfaces[1]['S']['S_1']
 # srf2 = patch.Surfaces[1]['S']['S_2']
 # srf3 = patch.Surfaces[2]['S']['S0_0']
 
-# log.write(str(subSurfaces))
+
+# @staticmethod
+def SampleCrvsOnSrfAtBroaderPointSamples(density=0):
+    # def MakeCurves(grid, direction):
+    #     def build(arr, direction):
+    #         for points in arr:
+    #             curve = rs.AddInterpCurve(points)
+    #
+    #     grid = grid[direction]
+    #     count = len(grid)
+    #
+    #     build(grid[1:-1], direction)
+    #     build(grid[0::(count - 1)], direction)
+    params = {
+        'n': 3,
+        'deg': 0.25,
+        'density': 2,
+        'scale': 100,
+        'offset': 0
+    }
+    params['density'] = density
+
+    surfaces = scriptcontext.sticky['builder']
+    newbuilder = PointCloudBuilder(**params)
+    newbuilder.Build()
+
+    CountU = newbuilder.Analysis['U/2']
+    CountV = newbuilder.V
+
+    # len(newbuilder.Points) == (newbuilder.n ** 2) * (newbuilder.U * newbuilder.V)
+    sample = CountU * CountV
+
+    for i1, patch in enumerate(surfaces.Patches):
+        for i2, (key, srf) in enumerate(patch.Surfaces[1]['S'].iteritems()):
+            pointGrid = newbuilder.Patches[i1].PointGrid[1]['P_' + str(i2)]
+
+            # for collection in (newbuilder.Patch.Curves, newbuilder.Curves):
+            #     if group not in collection:
+            #         collection[group] = {k: CurveList() for k in UV}
+            for i, direction in enumerate(UV):
+                isoCurves, seams = newbuilder.BuildIsoCurves(
+                    srf,
+                    grid=pointGrid,
+                    direction=direction,
+                    count=10
+                )
+                for curve in isoCurves:
+                    doc.Objects.AddCurve(curve)
+
+                # collection[group][direction].AddRange(isoCurves)
+
+    # print(len(newbuilder.Patches))
+    # for patch in newbuilder.Patches:
+    #     u, v = Builder.BuildPointGrid(patch.Points, 11, 11)
+    #     print(u)
+    #     # pos = 0
+    #     # for i in range(newbuilder.U):
+    #     #     pos = i * CountV
+    #     #     points = patch.Points.GetRange(pos, CountV)
+    #     #
+    #     #     # try:
+    #     #     #     rs.AddInterpCurve(points, 3)
+    #     #     # except:
+    #     #     #     pass
+    # #
+    # #     # for points in util.chunk(patch.Points, newbuilder.Analysis['U/2']):
+    # #     #     rs.AddCurve(points)
+    # #
+    # #         #     U, V = Builder.BuildPointGrid(patch.Points, newbuilder.U, newbuilder.V)
+    # #         #     for curve in U:
+    # #         #         rs.AddCurve(curve)
+    # #         #
+    # #         #     # for i in range(2):
+    # #         #     #     pointGrid = {}
+    # #         #     #
+    # #         #     #     for points in util.chunk(list(patch.Points), sample):
+    # #         #     #         print len(points)
+    # #         #     #         # for e in zip(('U', 'V'), PointGrid(Point3dList(points), CountU, CountV)):
+    # #         #     #         #     pointGrid[e[0]] = e[1]
+    # #         #     #
+    # #         #     #     # for i, direction in enumerate(('U', 'V')):
+    # #         #     #     #     MakeCurves(pointGrid, direction
+
+SampleCrvsOnSrfAtBroaderPointSamples()
 
 def IntersectSurfaces():
     tolerance = 10  # doc.ModelAbsoluteTolerance
