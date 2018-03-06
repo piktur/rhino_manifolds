@@ -959,15 +959,6 @@ class Builder:
                 rs.LayerPrintWidth(layer, 0.4)  # mm
                 # rs.LayerVisible(layer, False)
 
-    def __rendered__(self, obj):
-        '''
-        Confirm `obj` present in document Guid
-        '''
-        if obj == System.Guid.Empty:
-            raise Exception('RenderError')
-
-        return True
-
     def Render(self, cb, group, *args, **kwargs):
         '''
         Evaluates `cb()` and assigns Geometry to patch layer.
@@ -1096,7 +1087,7 @@ class MeshBuilder(Builder):
             for i, (group, divisions) in enumerate(__conf__.Div['m'].iteritems()):
                 for div in divisions:
                     id = doc.Objects.AddMesh(patch.Meshes[group][div])
-                    self.__rendered__(id)
+                    util.rendered(id)
                     ids.append(id)
                     rs.ObjectLayer(id, layer)
                     self.Rendered['m'][group].append(id)
@@ -1290,7 +1281,7 @@ class CurveBuilder(Builder):
                             curve = patch.Curves[group][subGroup][div]
                             if curve:
                                 id = doc.Objects.AddCurve(curve)
-                                self.__rendered__(id)
+                                util.rendered(id)
                                 rs.ObjectLayer(id, layer)
                                 self.Rendered['c'][group][subGroup].append(id)
 
@@ -1359,7 +1350,7 @@ class CurveBuilder(Builder):
                 if e[0] == 1:
                     for point in e[1:5]:
                         id = doc.Objects.AddPoint(point)
-                        self.__rendered__(id)
+                        util.rendered(id)
                         rs.ObjectLayer(id, 'Intersect::Points')
                 else:  # IsOverlap
                     pass
@@ -1610,7 +1601,7 @@ class SurfaceBuilder(Builder):
                     srf = patch.Surfaces[group]['S'][div]
                     if srf:
                         id = doc.Objects.AddSurface(srf)
-                        self.__rendered__(id)
+                        util.rendered(id)
                         ids.append(id)
                         rs.ObjectLayer(id, subLayer)
                         self.Rendered['s'][group].append(id)
@@ -1621,35 +1612,54 @@ class SurfaceBuilder(Builder):
         # Redundant
         #   * `self.ConvertToBeziers()`
         #   * `self.BuildSilhouette()`
-        pass
-        # Surfaces = []
-        # Breps = []
-        # for patch in self.Patches:
-        #     Surfaces.extend([
-        #         srf for srf in patch.Surfaces[1]['S'].values() if srf is not None
-        #     ])
-        #     Breps.extend([
-        #         brep for brep in patch.Breps[1]['S'].values() if brep is not None
-        #     ])
+
+        group = 1
+        Surfaces = []
+        Breps = []
+        for patch in self.Patches:
+            Surfaces.extend([
+                srf for srf in patch.Surfaces[group]['S'].values() if srf is not None
+            ])
+            Breps.extend([
+                brep for brep in patch.Breps[group]['S'].values() if brep is not None
+            ])
+
+        self.BuildBoundingBox(Surfaces)
+        self.SetAxonometricCameraProjection(self.BoundingBox)
+
+        self.Dimensions()
+
+        # CurveBuilder.CombineCurves()
+        self.CombineSurfaces()
+        self.BuildPolySurface(group=group, breps=Breps)
+        self.BuildBorders(group=group, breps=Breps)
+        self.BuildWireframe(
+            curves=self.Curves[group],
+            group=group,
+            directions=UV,
+            join=True
+        )
+        # Build Surface Subdivisions akin to `ConvertToBeziers`
+        self.BuildIsoGrid(geometry=1)
+        # self.SampleCrvsOnSrfAtBroaderPointSamples(density=0)
+
+        # TODO
         #
-        # self.BuildBoundingBox(Surfaces)
-        # self.SetAxonometricCameraProjection(self.BoundingBox)
+        # Generate dense Wireframe in both directions
+        # Join curves
+        # Run intersect on curves one direction at a time
         #
-        # self.Dimensions()
-        #
-        # # CurveBuilder.CombineCurves()
-        # self.CombineSurfaces()
-        # self.BuildPolySurface(group=1, breps=Breps)
-        # self.BuildBorders(group=1, breps=Breps)
-        #
-        # # self.SampleCrvsOnSrfAtBroaderPointSamples(density=0)
-        # self.BuildWireframe(group=1, join=True)
-        #
-        # # CurveBuilder.IntersectCurves()
-        # # Curves, Points = self.IntersectSurfaces()
-        # # self.SplitAtIntersection()
-        #
-        # doc.Views.Redraw()
+        # Generate surface Subdivisions
+        # select tiles closest to intersection points
+        # then run intersection algorithm on each of these groups
+        # Remove erroneous curves
+        # Join
+
+        # CurveBuilder.IntersectCurves()
+        # Curves, Points = self.IntersectSurfaces()
+        # self.SplitAtIntersection()
+
+        doc.Views.Redraw()
 
     def CombineSurfaces(self):
         '''
@@ -1748,7 +1758,7 @@ class SurfaceBuilder(Builder):
 
         for srf in result:
             id = doc.Objects.AddBrep(srf)
-            self.__rendered__(id)
+            util.rendered(id)
             rs.ObjectLayer(id, layer)
             self.Rendered['S'][group].append(id)
 
@@ -1768,7 +1778,7 @@ class SurfaceBuilder(Builder):
             ids = []
             for curve in Curve.JoinCurves(curves):
                 id = doc.Objects.AddCurve(curve)
-                self.__rendered__(id)
+                util.rendered(id)
                 rs.ObjectLayer(id, layer)
                 ids.append(id)
 
@@ -1787,31 +1797,67 @@ class SurfaceBuilder(Builder):
         for id in ids:
             self.Rendered['c'][group]['R'].append(id)
 
-    def BuildWireframe(self, group, join=True):
-        for direction in UV:
+    def BuildWireframe(self, curves, group, directions='UV', join=True):
+        for direction in directions:
             if join:
                 curves = sorted(
-                    Curve.JoinCurves(self.Curves[group][direction], 0.1, False),
+                    Curve.JoinCurves(curves[direction], 0.1, False),
                     cmp=self.CompareDistance)
-            else:
-                curves = self.Curves[group][direction]
 
             layer = util.layer('Curves', group, direction)
-            if not rs.IsLayer(layer):
-                rs.AddLayer(layer)
 
             if direction not in self.Rendered['c'][group]:
                 self.Rendered['c'][group][direction] = []
 
             for curve in curves:
-                id = doc.Objects.AddCurve(curve)
-                self.__rendered__(id)
-                rs.ObjectLayer(id, layer)
+                id = util.render(curve, layer)
 
                 # Add id to self.Rendered['i'] to facilitate staged Make2d algorithm
                 self.Rendered['c'][group][direction].append(id)
 
         return self.Rendered['c'][group]
+
+    def BuildIsoGrid(self, geometry=1, directions=UV):
+        '''
+        geometry : int
+            0. Rhino.Geometry.Mesh
+            1. Rhino.Geometry.NurbsSurface
+            2. Rhino.Geometry.NurbsCurve
+            3. All
+        directions : int
+            0. U
+            1. V
+            2. UV
+        '''
+        group = 1
+        for patch in self.Patches:
+            for (key, srf) in patch.Surfaces[group]['S'].iteritems():
+                if srf:
+                    # srf.SpanCount(0), srf.SpanCount(1)
+                    # srf.Points.CountU, srf.Points.CountV
+                    obj = util.IsoGrid(srf, 10, 10, TrimAware=True, Phase=patch.Phase)
+                    obj.Build(geometry=geometry, euqalizeSpanLength=False)  # experimental=False
+
+                    k1, k2 = patch.Phase
+
+                    if geometry in (0, 3):
+                        util.render(obj.Mesh)
+
+                    if geometry in (1, 3):
+                        for (u, v) in obj.SubSurfaces[k1][k2].iteritems():
+                            for (v, srf) in v.iteritems():
+                                util.render(srf)
+
+                    if geometry in (2, 3):
+                        self.BuildWireframe(
+                            curves=obj.Curves,
+                            group=group,
+                            directions=directions,
+                            join=True
+                        )
+
+                    # Add id to self.Rendered['i'] to facilitate staged Make2d algorithm
+                    # self.Rendered['s'][group][direction].append(id)
 
     def BuildIsoCurves(self, srf, grid, direction, count=3):
         def InterCrvOnSrfThroughDivisions():
@@ -1984,42 +2030,24 @@ class SurfaceBuilder(Builder):
                     #     if not match:
                     #         Curves.Add(curve)
                     #         id = doc.Objects.AddCurve(curve)
-                    #         self.__rendered__(id)
+                    #         util.rendered(id)
                     #         rs.ObjectLayer(id, 'Intersect::Curves')
                     #         self.Rendered['x'].append(id)
 
         for point in Points:
             # id = doc.Objects.AddPoint(point)
-            # self.__rendered__(id)
+            # util.rendered(id)
             # rs.ObjectLayer(id, 'Intersect::Points')
             pass
 
         for curve in Curves:
             # id = doc.Objects.AddCurve(curve)
-            # self.__rendered__(id)
+            # util.rendered(id)
             # rs.ObjectLayer(id, 'Intersect::Curves')
             # self.Rendered['x'].append(id)
             pass
 
         return Curves, Points
-
-    def ConvertToBeziers():
-        pass
-
-        layer = rs.AddLayer('Beziers')
-        beziers = []
-
-        # for srf in self.Surfaces[2]['S']:
-        #     bezier = Rhino.ConvertSurfaceToBezier(srf, False)
-        #     beziers.append(bezier)
-        #     rs.ObjectLayer(bezier, layer)
-
-        # rs.ObjectsByType(rs.filter.polysurface, True)
-        # rs.Command('ConvertToBeziers')
-
-        rs.LayerLocked(layer, True)
-
-        return beziers
 
     def SplitAtIntersection(self):
         pass
