@@ -96,17 +96,18 @@ class Config:
 
         return arr
 
+
 UV = ['U', 'V']
 SUV = ['S'] + UV
 
 __conf__ = Config(
     log='./log.txt',
     defaults={
-        'n': 5,
+        'n': 3,
         'deg': 0.25,
         'density': 2,
         'scale': 100,
-        'offset': (0, 0)
+        'offset': 0
     },
     density=(11, 21, 55, 107, 205),  # 110
     # Prepare variable names per division for each Geometry collection
@@ -126,10 +127,10 @@ __conf__ = Config(
             # 0: Config.div1('S', 1),
             1: {
                 k: v for (k, v) in zip(SUV, [Config.div1('S', 1, 3) for e in SUV])
-            },
-            2: {
-                k: v for (k, v) in zip(SUV, [Config.div2(e) for e in SUV])
             }
+            # 2: {
+            #     k: v for (k, v) in zip(SUV, [Config.div2(e) for e in SUV])
+            # }
         },
         'S': [1]  # `SurfaceBuilder.PolySurfaces`
     },
@@ -137,11 +138,13 @@ __conf__ = Config(
 
 
 def GetUserInput():
-    n = rs.GetInteger('n', 5, 1, 10)
-    alpha = rs.GetReal('Degree', 0.25, 0.0, 2.0)
-    density = rs.GetReal('UV Density', 2, 0, 4)
-    scale = rs.GetInteger('Scale', 100, 1, 100)
-    offset = rs.GetInteger('Offset', 0, -10, 10) * 300
+    _ = __conf__.Defaults
+
+    n = rs.GetInteger('n', _['n'], 1, 10)
+    alpha = rs.GetReal('Degree', _['deg'], 0.0, 2.0)
+    density = rs.GetReal('UV Density', _['density'], 0, 4)
+    scale = rs.GetInteger('Scale', _['scale'], 1, 100)
+    offset = rs.GetInteger('Offset', _['offset'], -10, 10) * 300
     builder = rs.GetInteger('Geometry', 4, 1, 5)
 
     return {
@@ -158,12 +161,12 @@ def GenerateGrid(density=2, scale=100, type=4):
     '''
     Generate 10 x 10 grid
     '''
+    _ = __conf__.Defaults
+
     arr = []
     offset = scale * 3
-    originY = 0
-    originX = 0
-    x = originX
-    y = originY
+    x = originY = 0
+    y = originX = 0
     alpha = rs.frange(0.1, 1.0, 0.1)
 
     for n in rs.frange(1, 10, 1):
@@ -182,17 +185,20 @@ def GenerateGrid(density=2, scale=100, type=4):
         doc.Views.Redraw()
 
 
-def Batch(dir, density=2, scale=100, type=4):
+def Batch(dir, density=0, scale=100, type=4):
+    _ = __conf__.Defaults
+
     queue = {}
     offset = scale * 3
-    alpha = 0.25  # rs.frange(0.1, 1.0, 0.1)
+    alpha = _['deg']  # rs.frange(0.1, 1.0, 0.1)
+    offset = [_['offset'] for n in range(2)]
 
     for n in rs.frange(2, 9, 1):
         # for a in alpha:
         #     out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', str(int(a * 10)))
         #     queue[out] = Builder(int(n), a, density, scale, (0, 0), type)
         out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', n, str(float(alpha)))
-        queue[out] = Builder(int(n), alpha, density, scale, (0, 0), type)
+        queue[out] = Builder(int(n), alpha, density, scale, offset, type)
 
     return queue
 
@@ -1615,35 +1621,35 @@ class SurfaceBuilder(Builder):
         # Redundant
         #   * `self.ConvertToBeziers()`
         #   * `self.BuildSilhouette()`
-
-        Surfaces = []
-        Breps = []
-        for patch in self.Patches:
-            Surfaces.extend([
-                srf for srf in patch.Surfaces[1]['S'].values() if srf is not None
-            ])
-            Breps.extend([
-                brep for brep in patch.Breps[1]['S'].values() if brep is not None
-            ])
-
-        self.BuildBoundingBox(Surfaces)
-        self.SetAxonometricCameraProjection(self.BoundingBox)
-
-        self.Dimensions()
-
-        # CurveBuilder.CombineCurves()
-        self.CombineSurfaces()
-        self.BuildPolySurface(group=1, breps=Breps)
-        self.BuildBorders(group=1, breps=Breps)
-
-        # self.SampleCrvsOnSrfAtBroaderPointSamples(density=0)
+        pass
+        # Surfaces = []
+        # Breps = []
+        # for patch in self.Patches:
+        #     Surfaces.extend([
+        #         srf for srf in patch.Surfaces[1]['S'].values() if srf is not None
+        #     ])
+        #     Breps.extend([
+        #         brep for brep in patch.Breps[1]['S'].values() if brep is not None
+        #     ])
+        #
+        # self.BuildBoundingBox(Surfaces)
+        # self.SetAxonometricCameraProjection(self.BoundingBox)
+        #
+        # self.Dimensions()
+        #
+        # # CurveBuilder.CombineCurves()
+        # self.CombineSurfaces()
+        # self.BuildPolySurface(group=1, breps=Breps)
+        # self.BuildBorders(group=1, breps=Breps)
+        #
+        # # self.SampleCrvsOnSrfAtBroaderPointSamples(density=0)
         # self.BuildWireframe(group=1, join=True)
-
-        # CurveBuilder.IntersectCurves()
-        # Curves, Points = self.IntersectSurfaces()
-        # self.SplitAtIntersection()
-
-        doc.Views.Redraw()
+        #
+        # # CurveBuilder.IntersectCurves()
+        # # Curves, Points = self.IntersectSurfaces()
+        # # self.SplitAtIntersection()
+        #
+        # doc.Views.Redraw()
 
     def CombineSurfaces(self):
         '''
@@ -1751,6 +1757,13 @@ class SurfaceBuilder(Builder):
         return self.PolySurfaces
 
     def BuildBorders(self, group, breps):
+        def layer(*args):
+            layer = util.layer('Curves', *args)
+            if not rs.IsLayer(layer):
+                rs.AddLayer(layer)
+
+            return layer
+
         def render(curves, layer):
             ids = []
             for curve in Curve.JoinCurves(curves):
@@ -1763,10 +1776,10 @@ class SurfaceBuilder(Builder):
 
         for brep in breps:
             curves = brep.DuplicateNakedEdgeCurves(outer=True, inner=False)
-            ids = render(curves, 'Curves::Edges')
+            ids = render(curves, layer(group, 'Edges'))
 
         curves = self.PolySurfaces[group].DuplicateNakedEdgeCurves(outer=True, inner=False)
-        ids = render(curves, 'Curves::Silhouette')
+        ids = render(curves, layer(group, 'Silhouette'))
 
         if 'R' not in self.Rendered['c'][group]:
             self.Rendered['c'][group]['R'] = []
@@ -1854,6 +1867,10 @@ class SurfaceBuilder(Builder):
 
         return InterpCrvOnSrfThroughPoints(srf, grid[direction])
 
+
+
+
+
     @staticmethod
     def SampleCrvsOnSrfAtBroaderPointSamples(density=0):
         # def MakeCurves(grid, direction):
@@ -1909,6 +1926,9 @@ class SurfaceBuilder(Builder):
         #         #     #
         #         #     #     # for i, direction in enumerate(('U', 'V')):
         #         #     #     #     MakeCurves(pointGrid, direction
+
+
+
 
     @staticmethod
     def ExtractIsoCurve(srf, parameter, direction=0):

@@ -5,6 +5,33 @@
 * [Unify Surface UV and Normal direction](http://www.rhinoscript.org/forum/1/60)
     I assume you are talking 2D here: you can use CurveCurvature() to get curvature information for a specific point on a curve. If you take the cross product of the tangent vector and the curvature vector, the resulting vector faces in negative or positive z direction, depending on you clockwise or counterclockwise curve direction.
 
+SampleCrvsOnSrfAtBroaderPointSamples
+
+* SurfaceCombinations:
+    find unique combinations from variable names rather than comparison of the Rhino objects which may not implement equality checking.
+* IntersectBreps:
+    Why is it generating thousands of curves
+    Remove seam intersections, these are unnecessary.
+    * ConvertToBeziers will give us the curves across self intersections. We can generate these bezier
+    surfaces with the command and we can traverse the point grid to create a number of cells with which we will subdivide the surface.
+
+    As for lower the number of isocurves we could run the pointsBuilder with smaller UV divisions and build the PointGrid from that Then feed extract interpolated curve from our surface at these points.
+
+    Refer to Downloads/Divide_surface_rectangles.ghx for alternate isocurve generation methods.
+* Border:
+    We found that Border curves weren't aligned with the surfaces. We can't use curves generated from Points alone. They must be obtained from the suraces instead. Use ExtractBorder or Edges or whatever instead
+
+* Create Subdivisions along the surface
+  Intersect
+  Select necessary curves delete the rest
+  PointsOn, SElectPoints and then CurveThroughPoints
+  We may need to do this for 2 div surfaces as well
+
+* Create Isocurves
+  Run Intersection in both directions
+  Then select subsurfaces within proximity of these points
+  Then run intersection on these subsurfaces.
+
 ## Review
 
 * 1 Degree Surfaces will often span multiple divisions. `ConvertToBezier` with Degree > 2 Nurbs Surfaces

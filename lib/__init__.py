@@ -31,13 +31,13 @@ rs.EnableRedraw(True)
 # When tolerance >= 0.1 silhouette edges are fragmented.
 # Set extreme intolerance to ensure precision.
 
-rs.UnitAbsoluteTolerance(0.001, True)  # 0.0000000001
-rs.UnitRelativeTolerance(0.1, True)
-rs.UnitAngleTolerance(0.1, True)
+rs.UnitAbsoluteTolerance(0.0000000001, True)
+rs.UnitRelativeTolerance(1.0, True)
+rs.UnitAngleTolerance(1.0, True)
 # 2  | millimeters
 # 4  | meters
 # 13 | nanometers
-rs.UnitSystem(4, False, True)
+rs.UnitSystem(2, False, True)
 
 # Allow rotation when in Parallel
 ApplicationSettings.ViewSettings.AlwaysPanParallelViews = False
