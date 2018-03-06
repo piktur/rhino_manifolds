@@ -2,6 +2,7 @@ import cmath
 from math import cos, sin, pi, fabs
 from itertools import combinations
 import string
+import os
 import System.Guid
 import System.Drawing
 import System.Enum
@@ -129,10 +130,10 @@ __conf__ = Config(
         's': {  # `SurfaceBuilder`
             1: {
                 k: v for (k, v) in zip(SUV, [Config.div1('S', 2) for e in SUV])
+            },
+            2: {
+                k: v for (k, v) in zip(SUV, [Config.div2(e) for e in SUV])
             }
-            # 2: {
-            #     k: v for (k, v) in zip(SUV, [Config.div2(e) for e in SUV])
-            # }
         },
         'S': [1]  # `SurfaceBuilder.PolySurfaces`
     },
@@ -176,7 +177,7 @@ def GenerateGrid(density=2, scale=100, type=4):
         y = originY
 
         for a in alpha:
-            arr.append(Builder(int(n), a, density, scale, (x, y), type))
+            arr.append(Builder(int(n), a, density, scale, (x, y)))
             y += offset
 
         originY = 0
@@ -187,7 +188,7 @@ def GenerateGrid(density=2, scale=100, type=4):
         doc.Views.Redraw()
 
 
-def Batch(dir, density=0, scale=100, type=4):
+def Batch(dir, density=2, scale=100, type=4):
     _ = __conf__.Defaults
 
     queue = {}
@@ -195,12 +196,19 @@ def Batch(dir, density=0, scale=100, type=4):
     alpha = _['deg']  # rs.frange(0.1, 1.0, 0.1)
     offset = [_['offset'] for n in range(2)]
 
-    for n in rs.frange(2, 9, 1):
+    if type == 5:
+        pass
+    elif type is None:
+        raise Exception('Builder not specified')
+    else:
+        type = __builders__[type]
+
+    for n in range(2, 7):
         # for a in alpha:
         #     out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', str(int(a * 10)))
         #     queue[out] = Builder(int(n), a, density, scale, (0, 0), type)
         out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', n, str(float(alpha)))
-        queue[out] = Builder(int(n), alpha, density, scale, offset, type)
+        queue[out] = type(n=int(n), deg=alpha, density=density, scale=scale, offset=offset)
 
     return queue
 
@@ -1704,6 +1712,8 @@ class SurfaceBuilder(Builder):
         for i in range(self.Density):
             self.RebuildWireframe(group=group, density=i)
 
+        # self.RebuildWireframe(group=group, density=self.Density+1)
+
         # Build Surface Subdivisions akin to `ConvertToBeziers`
         self.BuildIsoGrid(geometry=1)
 
@@ -1863,6 +1873,7 @@ class SurfaceBuilder(Builder):
         Replot with +/- sample rate and extract IsoCurves.
         '''
         params = __conf__.Defaults.copy()
+        params['n'] = self.n
         params['density'] = density
         params['offset'] = self.Offset
 

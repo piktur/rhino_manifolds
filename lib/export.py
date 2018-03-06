@@ -28,9 +28,12 @@ def Export(queue, cb=None, dir='~/Documents/CY'):
         previewSize = System.Drawing.Size(100, 100)  # view.ClientRectangle.Size
         view.CreateWireframePreviewImage(preview, previewSize, True, False)
     '''
-    for path in queue.iterkeys():
-        obj = queue[path]
+    for (path, obj) in queue.iteritems():
         obj.Build()
+        obj.AddLayers(obj.Layers)
+        obj.Render()
+        obj.Finalize()
+
         doc.Views.Redraw()
 
         if callable(cb):

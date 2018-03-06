@@ -46,7 +46,7 @@ log = file('./log.txt')
 
 if __name__ == '__main__':
     if rs.GetInteger('Export', 0) != 0:
-        dir = rs.GetString('Destination', '/Users/daniel/Documents/Design/export')
+        dir = rs.GetString('Destination', '/Users/daniel/Documents/Design/export[REBUILD]')
         Export(CalabiYau.Batch(dir), cb=None, dir=dir)
     else:
         CalabiYau.Run()
