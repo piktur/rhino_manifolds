@@ -37,7 +37,7 @@ rs.UnitAngleTolerance(1.0, True)
 # 2  | millimeters
 # 4  | meters
 # 13 | nanometers
-rs.UnitSystem(2, False, True)
+rs.UnitSystem(4, False, True)
 
 # Allow rotation when in Parallel
 ApplicationSettings.ViewSettings.AlwaysPanParallelViews = False
