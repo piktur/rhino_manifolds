@@ -1283,7 +1283,17 @@ class CurveBuilder(Builder):
                     subGroup[direction + '_' + str(count)].Add(self.Point)
 
     def BuildCurves(self, *args):
+        '''
+
+        '''
         def cache(curve, collections, subGroup, div):
+            '''
+            Parameters:
+                curve : Rhino.Geometry.Collections.Point3dList
+                collections : tuple
+                subGroup : str
+                div : int
+            '''
             curve = self.BuildInterpolatedCurve(curve, self.Degree)
 
             for obj in collections:
@@ -1295,6 +1305,8 @@ class CurveBuilder(Builder):
             #   [#14](https://bitbucket.org/kunst_dev/snippets/issues/14#comment-40891348)
             if subGroup == 'R' and i != 1:
                 self.Outer.Add(curve)
+
+        # k1, k2, a, b = args
 
         for (group, subGroup) in __conf__.Div['c'].iteritems():
             for (subGroup, divisions) in subGroup.iteritems():
@@ -1666,22 +1678,22 @@ class SurfaceBuilder(Builder):
         Builder.Render(self, cb, 'Surfaces', *args)
 
     def Finalize(self):
-        # TODO
-        #
-        # Generate dense Wireframe in both directions
-        # Join curves
-        # Run intersect on curves one direction at a time
-        #
-        # Generate surface Subdivisions
-        # select tiles closest to intersection points
-        # then run intersection algorithm on each of these groups
-        # Remove erroneous curves
-        # Join
+        '''
+        TODO
+            * Generate Wireframe, grouping U/V
+            * Join U/V Curves
+            * Intersect U/V Curves
+            * Subdivide Surfaces
+            * Select tiles closest to intersections
+            * Intersect tiles [relax Absolute Tolerance]
+            * Join Intersection Curves
 
-        # CurveBuilder.IntersectCurves()
-        # Curves, Points = self.IntersectSurfaces()
-        # self.SplitAtIntersection()
-
+        Example:
+            ```
+                CurveBuilder.IntersectCurves()
+                Curves, Points = self.IntersectSurfaces()
+            ```
+        '''
         group = 1
         Surfaces = []
         Breps = []
@@ -2014,6 +2026,9 @@ class SurfaceBuilder(Builder):
         return InterpCrvOnSrfThroughPoints(srf, grid[direction])
 
     def IntersectSurfaces(self):
+        '''
+
+        '''
         tolerance = 0.1  # doc.ModelAbsoluteTolerance
 
         Curves = CurveList()
@@ -2022,6 +2037,25 @@ class SurfaceBuilder(Builder):
         # Edges = [(e.PointAtStart, e.PointAtEnd) for e in self.Curves]
 
         breps = self.Breps[2]['S']
+
+        def SplitAtIntersection(a, b):
+            breps = a.Split(b, tolerance)
+
+            if len(breps) > 0:
+                obj = rs.coercerhinoobject(a, True)
+                if obj:
+                    attr = obj.Attributes if rs.ContextIsRhino() else None
+                    result = []
+
+                    # TODO Ensure objects added to relevant cache(s)
+                    for i in range(len(breps)):
+                        if i == 0:
+                            doc.Objects.Replace(obj.Id, breps[i])
+                            result.append(obj.Id)
+                        else:
+                            result.append(doc.Objects.AddBrep(breps[i], attr))
+                else:
+                    result = [doc.Objects.AddBrep(brep) for brep in breps]
 
         # Use "smallest" divisions to demarcate patch self-intersection(s)
         for (a, b) in self.SurfaceCombinations[2]:
@@ -2040,10 +2074,10 @@ class SurfaceBuilder(Builder):
                     # C2 = curve.PointAtEnd
                     #
                     # for edge in Edges:
-                    #     """
+                    #     '''
                     #     TODO
                     #       * Curve direction will be incorrect therefore comparison will fail. Use centre point or take a number of samples through the entire span. http://developer.rhino3d.com/api/RhinoCommonWin/html/M_Rhino_Geometry_Surface_IsAtSeam.htm
-                    #     """
+                    #     '''
                     #     E1, E2 = edge
                     #     match = C1.EpsilonEquals(E1, 0.1) and C2.EpsilonEquals(E2, 0.1) or C1.EpsilonEquals(E2, 0.1) and C2.EpsilonEquals(E1, 0.1)  # reverse
                     #
@@ -2086,24 +2120,6 @@ class SurfaceBuilder(Builder):
 
         return U, V
 
-    def SplitAtIntersection(self):
-        pass
-        # breps = a.Split(b, tolerance)
-        #
-        # if len(breps) > 0:
-        #     rhobj = rs.coercerhinoobject(a, True)
-        #     if rhobj:
-        #         attr = rhobj.Attributes if rs.ContextIsRhino() else None
-        #         result = []
-        #
-        #         for i in range(len(breps)):
-        #             if i == 0:
-        #                 doc.Objects.Replace(rhobj.Id, breps[i])
-        #                 result.append(rhobj.Id)
-        #             else:
-        #                 result.append(doc.Objects.AddBrep(breps[i], attr))
-        #     else:
-        #         result = [doc.Objects.AddBrep(brep) for brep in breps]
 
 __builders__ = {
     1: PointCloudBuilder,
