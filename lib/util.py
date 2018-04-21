@@ -16,6 +16,15 @@ def Halt():
 
 
 def ExportNamedViews():
+    '''
+    Extract view coordinates and write to JSON
+
+    Example:
+        * Open original .3dm file
+        * RunPythonScript `ExportNamedViews()`
+        * Create a New .3dm file
+        * RunPythonScript `ImportNamedViews()`
+    '''
     log = open('./views.json', 'a')
     fname = rs.DocumentPath() + rs.DocumentName()
     data = {}
@@ -35,15 +44,79 @@ def ExportNamedViews():
 
 
 def ImportNamedViews():
-    # TODO
-    log = open('./views.json', 'a')
-    data = json.loads(log)
+    '''
+    Read JSON and add view coordinates to document
+    '''
+    with open('./views.json') as log:
+        data = json.load(log)
 
-    for fname in data.iterkeys():
-        for view in data[fname].iterkeys():
-            camera, target = data[fname][view]
-            rs.AddNamedView(view)
-            rs.ViewCameraTarget(view, camera, target)
+    for (fname, views) in data.iteritems():
+        for (view, coords) in views.iteritems():
+            camera, target = coords
+            if view != 'Base':
+                rs.ViewCameraTarget(camera=camera, target=target)
+                view = rs.AddNamedView(name=view)
+
+
+def Make2d():
+    '''
+    TODO
+    Staged Maked2d builds 2d curves for a subset of objects.
+    '''
+    def run():
+        RunScript(
+            '-Make2D '
+            + 'DrawingLayout=CurrentView '
+            + 'ShowTangentEdges=Yes '
+            + 'CreateHiddenLines=No '
+            + 'MaintainSourceLayers=Yes '
+            + 'Enter ',
+            # + '-Invert ',
+            # + 'Hide '
+            # + 'SetView World Top ZE SelNone'
+            True
+        )
+
+    builder = scriptcontext.sticky['builder']
+
+    # rs.SelectObjects(
+    #     # builder.Rendered['Surfaces'][1]
+    #     builder.Rendered['PolySurface'][1]
+    #     builder.Rendered['Intersect']['Curves']
+    #     builder.Rendered['IsoCurves']['U']
+    #     builder.Rendered['IsoCurves']['V']
+    # )
+
+    for view in views:
+        rs.CurrentView(view)
+
+        for i, tolerance in enumerate(0.1, 0.001):
+            rs.UnitAbsoluteTolerance(tolerance, True)
+
+            rs.ObjectsByLayer(util.layer('PolySurfaces', 1), True)
+            rs.ObjectsByLayer(util.layer('Intersect', 'Curves'), True)
+
+            run()
+
+            # Transfer IsoCurves to correct layer
+            rs.RenameLayer('Make2D', util.layer(view, str(i)))
+
+        # Reset tolerance
+        rs.UnitAbsoluteTolerance(0.0000000001, True)
+
+        for dimension in 'UV':
+            rs.ObjectsByLayer(util.layer(Curves, 1, 1) + dimension, True)
+
+            run()
+
+            a = ('visible', 'lines', 'Curves', dimension)
+            b = util.layer('Make2D', *a)
+            c = util.layer(view, *a)
+
+            # Transfer IsoCurves to correct layer
+            rs.RenameLayer(b, c)
+            # Cleanup
+            rs.DeleteLayer('Make2d')
 
 
 def Palette():

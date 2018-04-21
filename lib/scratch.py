@@ -1,44 +1,16 @@
 import rhinoscriptsyntax as rs
 import json
-
+import util
 
 rs.EnableAutosave(False)
 
 
-def ExportNamedViews():
-    log = file('./views.json', 'w')
-    fname = rs.DocumentPath() + rs.DocumentName()
-    data = {}
-    data[fname] = {}
-
-    for view in rs.NamedViews():
-        rs.RestoreNamedView(view)
-        data[fname][view] = (
-            list(rs.ViewCamera()),
-            list(rs.ViewTarget())
-        )
-
-    log.write(json.dumps(data, indent=2) + '\n')
-    log.close()
-
-    return data
+# util.ExportNamedViews()
+util.ImportNamedViews()
 
 
-def ImportNamedViews():
-    with open('./views.json') as log:
-        data = json.load(log)
+# util.Make2d()
 
-    for (fname, views) in data.iteritems():
-        for (view, coords) in views.iteritems():
-            camera, target = coords
-            if view != 'Base':
-                rs.ViewCameraTarget(camera=camera, target=target)
-                view = rs.AddNamedView(name=view)
-
-
-# ExportNamedViews()
-
-ImportNamedViews()
 
 # import os
 # import sys
@@ -1051,59 +1023,9 @@ ImportNamedViews()
 # #     # REPORT :
 # #     #   *
 # #     # ExtractIsoCurvesFromBaseCurveDivisions(srf)
-# #
-# #
-# # def Make2d():
-# #     '''
-# #     THIS WORKS!!!
-# #     Only problem is I don't know how to ammend the layers.
-# #
-# #
-# #
-# #     ROTTING OOZE
-# #     Especially in 2Dimension CY the seam bulges in all sorts of ugly ways. Curves interpolated over it are ripe. `MergeSrf`seems to improve the situation.
-# #     Maybe we could run a MergeSrf on all SurfaceCombinations. Bear in mind it will fuck the junction up.
-# #
-# #     TODO
-# #     - Fix intersections, we don't want the overlaps
-# #     - Are Brep Curve and Surface combinations actually correct, do we need to use object ids instesad.
-# #     - Finish Make2d
-# #     '''
-# #     # TODO staged Make2d
-# #     # Run make2d numerous times selecting only a small number of curves at a time. This seems to yield better output than throwing everythin at it at once. Silhouette edges are especially bad.
-# #     # Low < 0.1 tolerance works best.
-# #     builder = scriptcontext.sticky['builder']
-# #
-# #     rs.SelectObjects(
-# #         # *self.Rendered['IsoCurves']['U'], # Do a subset of either U or V at a time
-# #         builder.Rendered['Surfaces'][1] #  or *self.Rendered['PolySurface'][1]
-# #     )
-# #
-# #     RunScript(
-# #         '-Make2D DrawingLayout=CurrentView '
-# #         + 'ShowTangentEdges=No '
-# #         + 'CreateHiddenLines=No '
-# #         + 'MaintainSourceLayers=Yes '
-# #         + 'Enter '
-# #         + '-Invert ',
-# #         # + 'Hide '
-# #         # + 'SetView World Top ZE SelNone'
-# #         True
-# #     )
-# #
-# #     # TODO
-# #     #   Major improvement
-# #     #   We may want to step through each problem curve with the user getting confirmation before performing the trim.
-# #     # Find all curves with a gap larger than tolerance
-# #     # Say if a curve ends in the middle of nowhere
-# #     # does the meet another. it should so if it doesn't
-# #     #   then find the nearest curve and trim from end to intersection
-# #
-# #     # We should then join the curves, with a reasonable tolerance. Not too high or too low.
-# #
-# # # Make2d()
-# #
-# #
+
+
+
 # # def FlipCurve(target, guide):
 # #     '''
 # #     TODO
