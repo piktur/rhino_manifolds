@@ -32,12 +32,12 @@ rs.EnableRedraw(True)
 # Set extreme intolerance to ensure precision.
 
 rs.UnitAbsoluteTolerance(0.0000000001, True)
-rs.UnitRelativeTolerance(1.0, True)
-rs.UnitAngleTolerance(1.0, True)
+rs.UnitRelativeTolerance(0.0, True)
+rs.UnitAngleTolerance(0.0, True)
 # 2  | millimeters
 # 4  | meters
 # 13 | nanometers
-rs.UnitSystem(4, False, True)
+rs.UnitSystem(4, True, True)
 
 # Allow rotation when in Parallel
 ApplicationSettings.ViewSettings.AlwaysPanParallelViews = False

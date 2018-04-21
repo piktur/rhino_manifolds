@@ -1632,7 +1632,9 @@ class SurfaceBuilder(Builder):
 
                     if group == 1:
                         # Build IsoCurves from PointGrid.
-                        # Make2d seems to perform better when given fewer objects properly joined.
+                        # `Make2d` seems to perform better when:
+                        #   * Selection contains fewer objects
+                        #   * Selected objects are rationally joined
                         for collection in (self.Patch.Curves, self.Curves):
                             if group not in collection:
                                 collection[group] = {k: CurveList() for k in UV}
@@ -1650,7 +1652,7 @@ class SurfaceBuilder(Builder):
     def JoinSurfaces(self, *args):
         '''
         TODO Join Patch subdivisions
-        Relax `doc.ModelAbsoluteTolerance` to maximise polysurface inclusion
+        NOTE Relax `doc.ModelAbsoluteTolerance` to maximise polysurface inclusion
         '''
         return
 
@@ -1680,19 +1682,10 @@ class SurfaceBuilder(Builder):
     def Finalize(self):
         '''
         TODO
-            * Generate Wireframe, grouping U/V
-            * Join U/V Curves
-            * Intersect U/V Curves
-            * Subdivide Surfaces
             * Select tiles closest to intersections
             * Intersect tiles [relax Absolute Tolerance]
-            * Join Intersection Curves
-
-        Example:
-            ```
-                CurveBuilder.IntersectCurves()
-                Curves, Points = self.IntersectSurfaces()
-            ```
+            * Subdivide Surfaces
+            * Join Curves at intersection
         '''
         group = 1
         Surfaces = []
@@ -1714,6 +1707,7 @@ class SurfaceBuilder(Builder):
         self.CombineSurfaces()
         self.BuildPolySurface(group=group, breps=Breps)
         self.BuildBorders(group=group, breps=Breps)
+
         self.BuildWireframe(
             curves=self.Curves[group],
             group=group,
@@ -1721,12 +1715,15 @@ class SurfaceBuilder(Builder):
             directions=UV,
             join=True
         )
-        for i in range(self.Density):
-            self.RebuildWireframe(group=group, density=i)
 
-        # self.RebuildWireframe(group=group, density=self.Density+1)
+        # Curves generated with different sample rate do not conform to Surface.
+        # Generate a new file per density instead.
+        # for i in range(self.Density):
+        #     self.RebuildWireframe(group=group, density=i)
 
-        # Build Surface Subdivisions akin to `ConvertToBeziers`
+        # Finely subdivide Surface; produces similar output to `ConvertToBeziers`.
+        # Output is used to build intersection Curves where patch geometry
+        # would self intersect.
         self.BuildIsoGrid(geometry=1)
 
         doc.Views.Redraw()
@@ -1782,7 +1779,7 @@ class SurfaceBuilder(Builder):
 
     def Dimensions(self):
         '''
-        Calculate form bounds and reference points
+        Calculate CY bounds and reference points
         '''
         _ = self.Analysis
 
@@ -1852,26 +1849,38 @@ class SurfaceBuilder(Builder):
         return self.Rendered['c']
 
     def BuildWireframe(self, curves, group, density, directions=UV, join=True):
+        '''
+        Join, sort and cache UV Curves around the entire form.
+
+        Parameters:
+            curves : dict, list, Rhino.Geometry.Collections.CurveList
+            group : int
+            density : int
+            directions : arr
+            join : bool
+        '''
         for direction in directions:
             if type(curves) == dict:
                 collection = curves[direction]
             elif isinstance(curves, CurveList) or type(curves) == list:
                 collection = curves
 
+            # Join curve segments where continuous
+            # Sort by distance from `self.Analysis['centre']`
             if join:
-                collection = sorted(
-                    Curve.JoinCurves(collection, 0.1, False),
-                    cmp=self.CompareDistance
-                )
+                joined = Curve.JoinCurves(collection, 0.1, False)
+                collection = sorted(joined, cmp=self.CompareDistance)
 
             layer = util.layer('Curves', group, density, direction)
 
+            # Prepare cache
             if density not in self.Rendered['c'][group]:
                 self.Rendered['c'][group][density] = {}
 
             if direction not in self.Rendered['c'][group][density]:
                 self.Rendered['c'][group][density][direction] = []
 
+            # Cache rendered object id
             for curve in collection:
                 id = util.render(curve, layer)
 
@@ -1882,7 +1891,16 @@ class SurfaceBuilder(Builder):
 
     def RebuildWireframe(self, group=1, density=0):
         '''
-        Replot with +/- sample rate and extract IsoCurves.
+        Replot +/- sample rate and extract IsoCurves.
+
+        Parameters:
+            group : int
+                Object group
+            density : int
+                Sample rate
+
+        See:
+            Config.GetNormalisedDensity
         '''
         params = __conf__.Defaults.copy()
         params['n'] = self.n
@@ -1911,7 +1929,7 @@ class SurfaceBuilder(Builder):
 
         self.BuildWireframe(
             curves=curves,
-            group=1,
+            group=group,
             density=density,
             directions=UV,
             join=True
@@ -1949,7 +1967,8 @@ class SurfaceBuilder(Builder):
                         #         util.render(srf)
                         for srf in obj.SubSurfaces:
                             if srf:
-                                util.render(srf, util.layer('Surfaces', 'Tile', group))
+                                layer = util.layer('Surfaces', 'Tile', group)
+                                util.render(srf, layer)
 
                     if geometry in (2, 3):
                         self.BuildWireframe(
@@ -1966,8 +1985,11 @@ class SurfaceBuilder(Builder):
     def BuildIsoCurves(self, srf, grid, direction, count=3):
         def InterCrvOnSrfThroughDivisions():
             '''
-            FAIL `ExtractIsoCurve` produces discontinuous curves.
-            FAIL Sync divisions to world coordinates, else divisions across sympathetic Outer curves will be misaligned.
+            Deprecated:
+                * `SurfaceBuilder.ExtractIsoCurve` produces discontinuous
+                curves.
+                * Sync divisions to world coordinates, else divisions across
+                sympathetic Outer curves will be misaligned.
             '''
             tolerance = doc.ModelAbsoluteTolerance
             points = grid[direction]
@@ -1985,18 +2007,21 @@ class SurfaceBuilder(Builder):
 
             return curves
 
-        def InterpCrvOnSrfThroughPoints(srf, grid):
+        def InterpCrvOnSrfThroughPoints(obj, grid):
             def build(arr, direction):
+                tolerance = 0.1  # doc.ModelAbsoluteTolerance  # 0.1
                 segments = CurveList()
 
                 for points in arr:
                     parameters = []
                     for point in points:
-                        result, u, v = srf.ClosestPoint(point)
+                        result, u, v = obj.ClosestPoint(point)
                         parameters.append([u, v])
 
                     parameters = rs.coerce2dpointlist(parameters)
-                    curve = srf.InterpolatedCurveOnSurfaceUV(parameters, 0.1)
+
+                    # curve = srf.InterpolatedCurveOnSurface(parameters, tolerance)
+                    curve = srf.InterpolatedCurveOnSurfaceUV(parameters, tolerance)
 
                     if curve:
                         segments.Add(curve)
@@ -2007,23 +2032,25 @@ class SurfaceBuilder(Builder):
             seams = CurveList()
             count = len(grid)
 
-            # Separate first and last; JoinCurves fails when duplicates overlap at surface seams
+            # Separate first and last; JoinCurves fails when duplicates overlap
+            # at surface seams
             # `CurveList.AddRange(CurveList.GetRange(1, count - 2))`
 
-            # All segments between first and last positions within patch
+            # Add all segments **between** first and last within patch to
+            # `isoCurves` collection
             for segment in build(grid[1:-1], direction):
                 if segment:
                     isoCurves.Add(segment)
 
-            # First and last segments
+            # Add first and last segments to `seams` collection
             for segment in build(grid[0::(count - 1)], direction):
                 if segment:
                     seams.Add(segment)
 
             return isoCurves, seams
 
-        srf = Brep.TryConvertBrep(srf).Faces[0]
-        return InterpCrvOnSrfThroughPoints(srf, grid[direction])
+        brep = Brep.TryConvertBrep(srf).Faces[0]
+        return InterpCrvOnSrfThroughPoints(brep, grid[direction])
 
     def IntersectSurfaces(self):
         '''
