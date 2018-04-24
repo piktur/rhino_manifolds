@@ -12,7 +12,7 @@ from scriptcontext import doc, sticky
 #   GetReal, AddObjectsToGroup, AddGroup, frange
 import rhinoscriptsyntax as rs
 import Rhino.RhinoMath as rmath
-from Rhino.Geometry import Brep, BrepFace, ControlPoint, Curve, CurveKnotStyle, Mesh, NurbsCurve, NurbsSurface, Point2d, Point3d, Vector3d, Intersect, Interval, Sphere
+from Rhino.Geometry import Brep, BrepFace, ControlPoint, Curve, CurveKnotStyle, Mesh, NurbsCurve, NurbsSurface, Point2d, Point3d, Vector3d, Intersect, Interval, Sphere, PointFaceRelation
 from Rhino.Collections import Point3dList, CurveList
 import Rhino
 import util
@@ -1726,6 +1726,8 @@ class SurfaceBuilder(Builder):
         # would self intersect.
         self.BuildIsoGrid(geometry=1)
 
+        self.IntersectSurfaces()
+
         doc.Views.Redraw()
 
     def CombineSurfaces(self):
@@ -2052,24 +2054,25 @@ class SurfaceBuilder(Builder):
         brep = Brep.TryConvertBrep(srf).Faces[0]
         return InterpCrvOnSrfThroughPoints(brep, grid[direction])
 
-    def IntersectSurfaces(self):
+    @staticmethod
+    def IntersectSurfaces():
         '''
-
+        Rhinoceros Mac v5.4 WIP, incapable of finding self intersections within a Surface.
+        Surfaces are therefore subdivided and pair combinations intersected.
+        See:
+            BuildIsoGrid
+            util.IsoGrid
         '''
-        tolerance = 0.1  # doc.ModelAbsoluteTolerance
-
-        Curves = CurveList()
-        Points = Point3dList()
-
-        # Edges = [(e.PointAtStart, e.PointAtEnd) for e in self.Curves]
-
-        breps = self.Breps[2]['S']
-
-        def SplitAtIntersection(a, b):
-            breps = a.Split(b, tolerance)
+        def SplitAtIntersection(obj, cutter):
+            '''
+            Parameters:
+                obj : Rhino.Geometry.Surface
+                cutter : Rhino.Geometry.Surface, Rhino.Geometry.Curve
+            '''
+            breps = obj.Split(cutter, tolerance)
 
             if len(breps) > 0:
-                obj = rs.coercerhinoobject(a, True)
+                obj = rs.coercerhinoobject(obj, True)
                 if obj:
                     attr = obj.Attributes if rs.ContextIsRhino() else None
                     result = []
@@ -2084,51 +2087,50 @@ class SurfaceBuilder(Builder):
                 else:
                     result = [doc.Objects.AddBrep(brep) for brep in breps]
 
-        # Use "smallest" divisions to demarcate patch self-intersection(s)
-        for (a, b) in self.SurfaceCombinations[2]:
-            a = a in breps and breps[a]
-            b = b in breps and breps[b]
+        tolerance = 0.1  # doc.ModelAbsoluteTolerance
 
-            if a and b:
-                result, curves, points = Intersect.Intersection.BrepBrep(a, b, tolerance)
+        tiles = rs.ObjectsByLayer('Surfaces::Tile::1')
+        tileCombinations = combinations([t.ToString() for t in tiles], 2)
 
-                for point in points:
-                    Points.Add(point)
+        Curves = CurveList()
+
+        for (a, b) in tileCombinations:
+            brepA = rs.coercebrep(a)
+            brepB = rs.coercebrep(b)
+
+            if brepA and brepB:
+                result, curves, points = Intersect.Intersection.BrepBrep(
+                    brepA,
+                    brepB,
+                    tolerance
+                )
 
                 for curve in curves:
-                    Curve.Add(curve)
-                    # C1 = curve.PointAtStart
-                    # C2 = curve.PointAtEnd
-                    #
-                    # for edge in Edges:
-                    #     '''
-                    #     TODO
-                    #       * Curve direction will be incorrect therefore comparison will fail. Use centre point or take a number of samples through the entire span. http://developer.rhino3d.com/api/RhinoCommonWin/html/M_Rhino_Geometry_Surface_IsAtSeam.htm
-                    #     '''
-                    #     E1, E2 = edge
-                    #     match = C1.EpsilonEquals(E1, 0.1) and C2.EpsilonEquals(E2, 0.1) or C1.EpsilonEquals(E2, 0.1) and C2.EpsilonEquals(E1, 0.1)  # reverse
-                    #
-                    #     if not match:
-                    #         Curves.Add(curve)
-                    #         id = doc.Objects.AddCurve(curve)
-                    #         util.rendered(id)
-                    #         rs.ObjectLayer(id, 'Intersect::Curves')
-                    #         self.Rendered['x'].append(id)
+                    isOverlap = False
 
-        for point in Points:
-            # id = doc.Objects.AddPoint(point)
-            # util.rendered(id)
-            # rs.ObjectLayer(id, 'Intersect::Points')
-            pass
+                    for edge in brepA.Edges:
+                        if not isOverlap:
+                            result = Intersect.Intersection.CurveCurve(
+                                edge,
+                                curve,
+                                tolerance,
+                                tolerance
+                            )
+
+                            if result:
+                                for event in result:
+                                    if event.IsOverlap:
+                                        isOverlap = True
+
+                    if not isOverlap:
+                        Curves.Add(curve)
 
         for curve in Curves:
-            # id = doc.Objects.AddCurve(curve)
-            # util.rendered(id)
-            # rs.ObjectLayer(id, 'Intersect::Curves')
-            # self.Rendered['x'].append(id)
-            pass
+            id = doc.Objects.AddCurve(curve)
+            util.rendered(id)
+            rs.ObjectLayer(id, 'Intersect::Curves')
 
-        return Curves, Points
+        return Curves
 
     @staticmethod
     def ExtractIsoCurve(srf, parameter, direction=0):

@@ -1,10 +1,11 @@
 import System.Guid
 from System.Drawing import Color
-from scriptcontext import doc
+from scriptcontext import doc, sticky
 import rhinoscriptsyntax as rs
 import json
-from Rhino.Geometry import Point3d, Brep, BrepFace, Surface, NurbsSurface, Interval
+from Rhino.Geometry import Point3d, Brep, BrepFace, Surface, NurbsSurface, Interval, Curve, Intersect
 from Rhino.Collections import Point3dList, CurveList
+from Rhino.RhinoApp import RunScript
 
 
 def Halt():
@@ -58,67 +59,6 @@ def ImportNamedViews():
                 view = rs.AddNamedView(name=view)
 
 
-def Make2d():
-    '''
-    TODO
-    Staged Maked2d builds 2d curves for a subset of objects.
-    '''
-    def run():
-        RunScript(
-            '-Make2D '
-            + 'DrawingLayout=CurrentView '
-            + 'ShowTangentEdges=Yes '
-            + 'CreateHiddenLines=No '
-            + 'MaintainSourceLayers=Yes '
-            + 'Enter ',
-            # + '-Invert ',
-            # + 'Hide '
-            # + 'SetView World Top ZE SelNone'
-            True
-        )
-
-    builder = scriptcontext.sticky['builder']
-
-    # rs.SelectObjects(
-    #     # builder.Rendered['Surfaces'][1]
-    #     builder.Rendered['PolySurface'][1]
-    #     builder.Rendered['Intersect']['Curves']
-    #     builder.Rendered['IsoCurves']['U']
-    #     builder.Rendered['IsoCurves']['V']
-    # )
-
-    for view in views:
-        rs.CurrentView(view)
-
-        for i, tolerance in enumerate(0.1, 0.001):
-            rs.UnitAbsoluteTolerance(tolerance, True)
-
-            rs.ObjectsByLayer(util.layer('PolySurfaces', 1), True)
-            rs.ObjectsByLayer(util.layer('Intersect', 'Curves'), True)
-
-            run()
-
-            # Transfer IsoCurves to correct layer
-            rs.RenameLayer('Make2D', util.layer(view, str(i)))
-
-        # Reset tolerance
-        rs.UnitAbsoluteTolerance(0.0000000001, True)
-
-        for dimension in 'UV':
-            rs.ObjectsByLayer(util.layer(Curves, 1, 1) + dimension, True)
-
-            run()
-
-            a = ('visible', 'lines', 'Curves', dimension)
-            b = util.layer('Make2D', *a)
-            c = util.layer(view, *a)
-
-            # Transfer IsoCurves to correct layer
-            rs.RenameLayer(b, c)
-            # Cleanup
-            rs.DeleteLayer('Make2d')
-
-
 def Palette():
     '''
     Returns 2D list of colours 10 * 4
@@ -135,6 +75,13 @@ def Palette():
         ))
 
     return arr
+
+
+def coercecurvelist(obj):
+    if not isinstance(obj, CurveList):
+        obj = CurveList(obj)
+
+    return obj
 
 
 def rendered(obj):
@@ -166,6 +113,62 @@ def AddLayer(str, colour=None):
         rs.AddLayer(str, colour)
 
     return str
+
+
+def PurgeAll(layer):
+    '''
+    Recursively removes a layer, sublayers and geometry.
+
+    Parameters:
+        layer : str
+    '''
+    if not rs.IsLayer(layer):
+        return
+
+    layer = doc.Layers.FindByFullPath(layer, True)
+    children = doc.Layers[layer].GetChildren()
+
+    if children:
+        for child in children:
+            PurgeAll(child.FullPath)
+
+    doc.Layers.Purge(layer, True)
+    doc.Views.Redraw()
+
+
+def Visible(layer, bool):
+    '''
+    Set Layer visibility
+
+    Parameters:
+        layer : str
+        bool : bool
+    '''
+    id = doc.Layers.FindByFullPath(layer, True)
+    layer = doc.Layers[id]
+    layer.IsVisible = bool
+    layer.CommitChanges()
+
+
+def Transfer(origin, destination):
+    '''
+    Transfer object to layer. Use in place of `rs.RenameLayer()`
+
+    Parameters:
+        origin : str
+        destination : str
+    '''
+    # Ensure destination layer exists
+    if not rs.IsLayer(destination):
+        rs.AddLayer(destination)
+
+    if rs.IsLayer(origin):
+        rs.LayerVisible(origin, True, True)
+
+        for id in rs.ObjectsByLayer(origin, True):
+            rs.ObjectLayer(id, destination)
+
+    doc.Views.Redraw()
 
 
 def layer(*args):
@@ -538,3 +541,142 @@ class IsoGrid():
             result, u, v = srf.ClosestPoint(point)
             if result:
                 return True, srf.PointAt(u, v), u, v
+
+
+def RemoveOverlappingCurves(setA, setB, tolerance=0.1):  # doc.ModelAbsoluteTolerance
+    '''
+    Compare low/high precision Curve sets and remove low precision Cuve when overlapping.
+
+    Parameters:
+        setA : list<Rhino.DocObjects.RhinoObject>
+            Low precision Curve identifiers
+        setB : list<Rhino.DocObjects.RhinoObject>
+            High precision Curve identifiers
+        tolerance : float
+    '''
+    for i2, obj1 in enumerate(setA):
+        c1 = rs.coercecurve(obj1)
+
+        for i2, obj2 in enumerate(setB):
+            c2 = rs.coercecurve(obj2)
+
+            result = Intersect.Intersection.CurveCurve(c1, c2, tolerance, tolerance)
+
+            if result:
+                for event in result:
+                    if event.IsOverlap:
+                        deviation = Curve.GetDistancesBetweenCurves(c1, c2, tolerance)
+
+                        # minA = deviation[5]
+                        maxaA = deviation[2]
+
+                        # maxB = deviation[3]
+                        # minB = deviation[6]
+
+                        # minDeviation = deviation[4]
+                        maxDeviation = deviation[1]
+
+                        if maxDeviation < tolerance:
+                            l1 = c1.Length if hasattr(c1, 'Length') else c1.GetLength()
+                            l2 = c2.Length if hasattr(c2, 'Length') else c2.GetLength()
+
+                            # Keep longer
+                            if l1 > l2:
+                                rs.DeleteObject(obj2)
+                            else:
+                                rs.DeleteObject(obj1)
+
+
+def Make2d():
+    '''
+    Rhinoceros Mac v5.4 WIP, 2D output improves when run with a smaller subset of objects.
+    This macro generates 2D curves in three stages:
+        1. Surface and intersections
+        2. Surface U IsoCurves
+        2. Surface V IsoCurves
+    Due to form complexity, rounding issues/floating point mathematics,
+    manual correction may be required.
+    '''
+    def run():
+        RunScript(
+            '-Make2D  DrawingLayout=CurrentView '
+            + 'ShowTangentEdges=Yes '
+            + 'CreateHiddenLines=No '
+            + 'MaintainSourceLayers=Yes '
+            + 'Enter ',
+            True
+        )
+
+    baseLayers = [
+        layer('PolySurfaces', 1),
+        layer('Intersect', 'Curves')
+    ]
+
+    for view in rs.NamedViews():
+        if view != 'Base':
+            rs.RestoreNamedView(view)
+            rs.UnselectAllObjects()
+
+            # 1. Generate Outlines
+            # Generate 2D curves with relaxed tolerance(s) (decrease accuracy)
+            # Curves are generated twice, once per tolerance,
+            # to increase coverage and minimise fragmentation.
+            for i, tolerance in enumerate((0.1, 0.001)):
+                rs.UnitAbsoluteTolerance(tolerance, True)
+
+                # Select objects
+                for l in baseLayers:
+                    if rs.IsLayer(l):
+                        rs.LayerVisible(l, True, True)
+                        rs.ObjectsByLayer(l, True)
+
+                run()
+
+                # Transfer 2D curves to View layer
+                for l in baseLayers:
+                    for child in ('lines', 'tangents'):
+                        a = layer('Make2D', 'visible', child, l)
+                        b = layer(view, 'visible', child, str(i), l)
+
+                        Transfer(a, b)
+                        Visible(view, False)
+
+                PurgeAll('Make2D')
+
+            rs.UnselectAllObjects()
+
+            # 2. Generate IsoCurves
+            # Decrease tolerance (increase accuracy)
+            rs.UnitAbsoluteTolerance(0.0000000001, True)
+
+            # Run Make2D once per curve direction
+            for dimension in 'UV':
+                isoCurves = layer('Curves', 1, 0, dimension)
+                layers = list(baseLayers)  # copy
+                layers.append(isoCurves)
+
+                # Select objects
+                for l in layers:
+                    if rs.IsLayer(l):
+                        rs.LayerVisible(l, True, True)
+                        rs.ObjectsByLayer(l, True)
+
+                run()
+
+                a = layer('Make2D', 'visible', 'lines', isoCurves)
+                b = layer(view, 'visible', 'lines', isoCurves)
+
+                Transfer(a, b)
+
+                Visible(view, False)
+                Visible(isoCurves, False)
+                PurgeAll('Make2D')
+
+            for l in baseLayers:
+                for child in ('lines', 'tangents'):
+                    a = layer(view, 'visible', child, 0, l)
+                    b = layer(view, 'visible', child, 1, l)
+
+                    RemoveOverlappingCurves(*[
+                        rs.ObjectsByLayer(eval(var)) for var in 'ab'
+                    ])
