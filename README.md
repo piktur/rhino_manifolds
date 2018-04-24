@@ -4,14 +4,6 @@ A Quintic complex Fermat Surface (power n = 5) is known to provide 10-dimensiona
 
 Basic String Theory says Spacetime is 10 dimensional; we experience 4 dimensions, 3 in Space and 1 in Time. Quintic (power n = 5) polynomial Calabi Yau space.
 
-* [1](https://www.youtube.com/watch?v=Yz6gltKeoM8)
-* [2](http://scholarpedia.org/article/Calabi-Yau_manifold)
-* [3](https://mathoverflow.net/questions/42707/calabi-yau-manifolds)
-* [4](http://dimensions-of-time.blogspot.com.au/)
-* [5](http://prideout.net/blog/?p=44)
-* ["The Elegant Universe", Brian Greene]()
-* ["The Fabric of the Cosmos", Brian Greene]()
-
 ## Algorithm
 
 [Andrew J. Hanson's algorithm](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) and [summary](http://aleph.se/andart2/)
@@ -94,7 +86,7 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
 1. Open source file
 2. `RunPythonScript` [`ExportNamedViews()`](/lib/macro/export_named_views.py) to write view coordinates to `./views.json`
 3. Create a new file
-4. `RunPythonScript` ['CalabiYau.Run()'](/lib/__init__.py)
+4. `RunPythonScript` [`CalabiYau.Run()`](/lib/__init__.py)
 5. `RunPythonScript` [`ImportNamedViews()`](/lib/macro/import_named_views.py)
 
 ### Export Vector/Raster
@@ -102,13 +94,12 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
 1. `SelectAll` 2D Curves
 2. `File > Export Selected` as Adobe Illustrator `.ai`
 3. `File > Export Selected` as Rhino `.3dm`
-
-1. `Open` exported curves with Adobe Illustrator
-2. `Select All`
-3. `Resize` selection so that the largest dimension measures `200mm`
-4. `Drag` selection into centre of `Artboard` measuring `210x210mm`
-5. Set `Stroke Width` to `0.4mm`
-6. `Save As` .eps
+4. `Open` exported curves with Adobe Illustrator
+5. `Select All`
+6. `Resize` selection so that the largest dimension measures `200mm`
+7. `Drag` selection into centre of `Artboard` measuring `210x210mm`
+8. Set `Stroke Width` to `0.4mm`
+9. `Save As` .eps
 
 See template: `~/Applications/Adobe Illustrator CC 2017/Cool Extras/en_GB/Templates/A4_4Div.ait`
 
@@ -123,17 +114,17 @@ Rasterize `File > Export > Export As` [`.psd`](/3.png)
 ## Examples
 
 1. [Wolfram Mathematica](/examples/mathematica/plot_1.nb)  [[Source](http://demonstrations.wolfram.com/CalabiYauSpace/)]
-
 2. [Wolfram Mathematica](/examples/mathematica/plot_2.nb)  [[Source](http://kaurov.com/wordpress/?p=1246)]
-
 3. [Wolfram Mathematica](/examples/mathematica/plot_3.nb)
-
 4. [Wolfram Mathematica](/examples/mathematica/plot_4.nb)
-
 5. [Wolfram Mathematica](/examples/mathematica/plot_5.nb)
-
 6. [Wolfram Mathematica](/examples/mathematica/plot_6.nb)
-
 7. [SketchUp](https://3dwarehouse.sketchup.com/model/73d1a448bc4c446d8389babcf188871/Manifolds)
-
 8. [Rhino](http://www.tanjiasi.com/surface-design/)
+9. ["Visualizing the Path from Fermat's Last Theorem to Calabi-Yau Spaces", Andrew Hanson](https://www.youtube.com/watch?v=Yz6gltKeoM8)
+10. ["Calabi-Yau manifold"](http://scholarpedia.org/article/Calabi-Yau_manifold)
+11. ["Calabi - Yau Manifolds"](https://mathoverflow.net/questions/42707/calabi-yau-manifolds)
+12. ["Dimensions of Time"](http://dimensions-of-time.blogspot.com.au/)
+13. ["Mesh Generation with Python"](http://prideout.net/blog/?p=44)
+14. ["The Elegant Universe", Brian Greene]()
+14. ["The Fabric of the Cosmos", Brian Greene]()
