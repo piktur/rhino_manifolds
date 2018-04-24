@@ -669,7 +669,7 @@ def RemoveOverlappingCurves(setA, setB, tolerance=0.1):  # doc.ModelAbsoluteTole
                                     l1 = c1.Length if hasattr(c1, 'Length') else c1.GetLength()
                                     l2 = c2.Length if hasattr(c2, 'Length') else c2.GetLength()
 
-                                    # Keep longer
+                                    # Keep if longer otherwise delete low precision Curve
                                     if l1 > l2:
                                         rs.DeleteObject(obj2)
                                     else:
@@ -708,14 +708,14 @@ def Make2d():
 
     rs.CurrentLayer('Default')
 
-    # Hide all Layers
-    for l in rs.LayerNames():
-        if l != 'Default':
-            Visible(l, False)
-
     for view in rs.NamedViews():
         if view != 'Base':
             rs.RestoreNamedView(view)
+
+            # Hide all Layers
+            for l in rs.LayerNames():
+                if l != 'Default':
+                    Visible(l, False)
 
             # 1. Generate Outlines
             # Generate 2D curves with relaxed tolerance(s) (decrease accuracy)
