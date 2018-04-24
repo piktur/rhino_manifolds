@@ -1,3 +1,4 @@
 import util
 
-util.ImportNamedViews()
+if __name__ == '__main__':
+    util.ImportNamedViews()

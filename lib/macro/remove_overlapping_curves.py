@@ -1,3 +1,4 @@
 import util
 
-util.RemoveOverlappingCurves()
+if __name__ == '__main__':
+    util.RemoveOverlappingCurves()

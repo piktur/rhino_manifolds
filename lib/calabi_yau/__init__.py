@@ -14,25 +14,21 @@ import rhinoscriptsyntax as rs
 import Rhino.RhinoMath as rmath
 from Rhino.Geometry import Brep, BrepFace, ControlPoint, Curve, CurveKnotStyle, Mesh, NurbsCurve, NurbsSurface, Point2d, Point3d, Vector3d, Intersect, Interval, Sphere, PointFaceRelation
 from Rhino.Collections import Point3dList, CurveList
-import Rhino
+
 import util
-import export
-from export import fname
 from events import EventHandler
-
-
-reload(util)
-reload(export)
 
 
 class Config:
     __slots__ = ['Log', 'Div', 'Defaults', '__density__']
 
     def __init__(self, **kwargs):
-        self.Log = open(kwargs['log'], 'w')
         self.Div = kwargs['div']
         self.Defaults = kwargs['defaults']
         self.__density__ = {i: n for i, n in enumerate(kwargs['density'])}
+
+        if 'log' in kwargs:
+            self.Log = open(kwargs['log'], 'w')
 
     def GetNormalisedDensity(self, i):
         return self.__density__[i]
@@ -205,9 +201,9 @@ def Batch(dir, density=2, scale=100, type=4):
 
     for n in range(2, 7):
         # for a in alpha:
-        #     out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', str(int(a * 10)))
+        #     out = util.fname('3dm', os.path.join(dir, str(n)), 'CY', str(int(a * 10)))
         #     queue[out] = Builder(int(n), a, density, scale, (0, 0), type)
-        out = export.fname('3dm', os.path.join(dir, str(n)), 'CY', n, str(float(alpha)))
+        out = util.fname('3dm', os.path.join(dir, str(n)), 'CY', n, str(float(alpha)))
         queue[out] = type(n=int(n), deg=alpha, density=density, scale=scale, offset=offset)
 
     return queue

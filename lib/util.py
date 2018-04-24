@@ -1,19 +1,216 @@
+import os
+import errno
+import sys
+import json
+import string
+import System
 import System.Guid
 from System.Drawing import Color
+from System.IO import Path, File, FileInfo, FileAttributes
+import System.Collections.Generic as SCG
 from scriptcontext import doc, sticky
 import rhinoscriptsyntax as rs
-import json
+from Rhino.FileIO import FileWriteOptions, FileReadOptions
 from Rhino.Geometry import Point3d, Brep, BrepFace, Surface, NurbsSurface, Interval, Curve, Intersect
 from Rhino.Collections import Point3dList, CurveList
 from Rhino.RhinoApp import RunScript
 
 
-def Halt():
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
+
+def fname(format='3dm', path='', *fname):
+    basename = '_'.join(map(lambda e: str(e), fname)) + '.' + format
+    mkdir_p(path)
+    return os.path.join(path, basename)
+
+
+def coercecurvelist(obj):
+    if not isinstance(obj, CurveList):
+        obj = CurveList(obj)
+
+    return obj
+
+
+def rendered(obj):
     '''
-    In lieu of MacOS debugger...
+    Confirm `obj` present in document Guid
     '''
-    if rs.GetBoolean('Proceed',  ('Proceed?', 'No', 'Yes'), (True)) is None:
-        return None
+    if obj == System.Guid.Empty:
+        raise Exception('RenderError')
+
+    return True
+
+
+def render(geometry, layer=None):
+    if isinstance(geometry, Point3d):
+        id = doc.Objects.AddPoint(geometry)
+    else:
+        id = doc.Objects.Add(geometry)
+    rendered(id)
+
+    if layer:
+        str = AddLayer(layer)
+        rs.ObjectLayer(id, str)
+
+    return id
+
+
+def layer(*args):
+    return '::'.join([str(e) for e in args])
+
+
+def __path__(nodes, sep=';'):
+    return sep.join([str(n) for n in nodes])
+
+
+def chunk(arr, size):
+    '''
+    Yield successive chunks of `size` from `list`.
+    '''
+    for i in range(0, len(arr), size):
+        yield arr[i:i + size]
+
+
+def AddLayer(str, colour=None):
+    if not rs.IsLayer(str):
+        rs.AddLayer(str, colour)
+
+    return str
+
+
+def PurgeLayer(layer):
+    '''
+    Delete a layer, sublayers and geometry
+
+    Parameters:
+        layer : str
+    '''
+    if not rs.IsLayer(layer):
+        return
+
+    layer = doc.Layers.FindByFullPath(layer, True)
+    children = doc.Layers[layer].GetChildren()
+
+    if children:
+        for child in children:
+            PurgeLayer(child.FullPath)
+
+    doc.Layers.Purge(layer, True)
+    doc.Views.Redraw()
+
+
+def PurgeAll():
+    '''
+    Delete all objects within document
+    '''
+    rs.CurrentLayer('Default')
+
+    for layer in rs.LayerNames():
+        if rs.IsLayer(layer) and layer != 'Default':
+            rs.PurgeLayer(layer)
+
+    objs = []
+    objTable = doc.Objects
+    for obj in objTable.GetObjectList(Rhino.DocObjects.ObjectType.AnyObject):
+        objs.append(obj.Id)
+    for guid in objs:
+        objTable.Delete(guid, True)
+
+
+def Visible(layer, visible=True):
+    '''
+    Set Layer visibility
+
+    Parameters:
+        layer : str
+        visible : bool
+    '''
+    def toggle(layer):
+        id = doc.Layers.FindByFullPath(layer, True)
+        layer = doc.Layers[id]
+        layer.IsVisible = visible
+        layer.CommitChanges()
+
+    if visible:  # Step through path
+        path = string.split(layer, '::')
+        for i in range(len(path)):
+            toggle('::'.join(path[0:i + 1]))
+    else:
+        toggle(layer)
+
+
+def Transfer(origin, destination):
+    '''
+    Transfer object to layer. Use in place of `rs.RenameLayer()`
+
+    Parameters:
+        origin : str
+        destination : str
+    '''
+    # Ensure destination layer exists
+    if not rs.IsLayer(destination):
+        rs.AddLayer(destination)
+
+    if rs.IsLayer(origin):
+        rs.LayerVisible(origin, True, True)
+
+        for id in rs.ObjectsByLayer(origin, True):
+            rs.ObjectLayer(id, destination)
+
+    doc.Views.Redraw()
+
+
+def Export(queue, cb=None, dir='~/Documents/CY'):
+    '''
+    [See](https://bitbucket.org/kunst_dev/snippets/issues/11/export-2d)
+    Parameters:
+        queue : dict
+        cb: function
+        dir : string
+    Example:
+        dir = rs.GetString('Destination')
+        Export(CalabiYau.Batch(dir), CalabiYau.Make2D, dir)
+
+    TODO
+        def CreateWireframePreviewImage()
+            preview = fname('jpg', path, f)
+            view = doc.Views.Find('Top', False)
+            previewSize = System.Drawing.Size(100, 100)  # view.ClientRectangle.Size
+            view.CreateWireframePreviewImage(preview, previewSize, True, False)
+    '''
+    def WriteFile(filePath, version=5, geomOnly=False, selectedOnly=False):
+        '''
+        Export a file.
+        [See](https://github.com/localcode/rhinopythonscripts/blob/34c5314/FileTools.py)
+        '''
+        opt = FileWriteOptions()
+        opt.FileVersion = version
+        opt.WriteGeometryOnly = geomOnly
+        opt.WriteSelectedObjectsOnly = selectedOnly
+
+        return doc.WriteFile(filePath, opt)
+
+    for (path, obj) in queue.iteritems():
+        obj.Build()
+        obj.AddLayers(obj.Layers)
+        obj.Render()
+        obj.Finalize()
+
+        doc.Views.Redraw()
+
+        if callable(cb):
+            cb()
+
+        WriteFile(path)
+        PurgeAll()
 
 
 def ExportNamedViews():
@@ -75,116 +272,6 @@ def Palette():
         ))
 
     return arr
-
-
-def coercecurvelist(obj):
-    if not isinstance(obj, CurveList):
-        obj = CurveList(obj)
-
-    return obj
-
-
-def rendered(obj):
-    '''
-    Confirm `obj` present in document Guid
-    '''
-    if obj == System.Guid.Empty:
-        raise Exception('RenderError')
-
-    return True
-
-
-def render(geometry, layer=None):
-    if isinstance(geometry, Point3d):
-        id = doc.Objects.AddPoint(geometry)
-    else:
-        id = doc.Objects.Add(geometry)
-    rendered(id)
-
-    if layer:
-        str = AddLayer(layer)
-        rs.ObjectLayer(id, str)
-
-    return id
-
-
-def AddLayer(str, colour=None):
-    if not rs.IsLayer(str):
-        rs.AddLayer(str, colour)
-
-    return str
-
-
-def PurgeAll(layer):
-    '''
-    Recursively removes a layer, sublayers and geometry.
-
-    Parameters:
-        layer : str
-    '''
-    if not rs.IsLayer(layer):
-        return
-
-    layer = doc.Layers.FindByFullPath(layer, True)
-    children = doc.Layers[layer].GetChildren()
-
-    if children:
-        for child in children:
-            PurgeAll(child.FullPath)
-
-    doc.Layers.Purge(layer, True)
-    doc.Views.Redraw()
-
-
-def Visible(layer, bool):
-    '''
-    Set Layer visibility
-
-    Parameters:
-        layer : str
-        bool : bool
-    '''
-    id = doc.Layers.FindByFullPath(layer, True)
-    layer = doc.Layers[id]
-    layer.IsVisible = bool
-    layer.CommitChanges()
-
-
-def Transfer(origin, destination):
-    '''
-    Transfer object to layer. Use in place of `rs.RenameLayer()`
-
-    Parameters:
-        origin : str
-        destination : str
-    '''
-    # Ensure destination layer exists
-    if not rs.IsLayer(destination):
-        rs.AddLayer(destination)
-
-    if rs.IsLayer(origin):
-        rs.LayerVisible(origin, True, True)
-
-        for id in rs.ObjectsByLayer(origin, True):
-            rs.ObjectLayer(id, destination)
-
-    doc.Views.Redraw()
-
-
-def layer(*args):
-    return '::'.join([str(e) for e in args])
-
-
-def __path__(nodes, sep=';'):
-    return sep.join([str(n) for n in nodes])
-
-
-def chunk(arr, size):
-    '''
-    Yield successive chunks of `size` from `list`.
-    '''
-    for i in range(0, len(arr), size):
-        yield arr[i:i + size]
 
 
 class IsoGrid():
@@ -557,34 +644,36 @@ def RemoveOverlappingCurves(setA, setB, tolerance=0.1):  # doc.ModelAbsoluteTole
     for i2, obj1 in enumerate(setA):
         c1 = rs.coercecurve(obj1)
 
-        for i2, obj2 in enumerate(setB):
-            c2 = rs.coercecurve(obj2)
+        if c1:
+            for i2, obj2 in enumerate(setB):
+                c2 = rs.coercecurve(obj2)
 
-            result = Intersect.Intersection.CurveCurve(c1, c2, tolerance, tolerance)
+                if c2:
+                    result = Intersect.Intersection.CurveCurve(c1, c2, tolerance, tolerance)
 
-            if result:
-                for event in result:
-                    if event.IsOverlap:
-                        deviation = Curve.GetDistancesBetweenCurves(c1, c2, tolerance)
+                    if result:
+                        for event in result:
+                            if event.IsOverlap:
+                                deviation = Curve.GetDistancesBetweenCurves(c1, c2, tolerance)
 
-                        # minA = deviation[5]
-                        maxaA = deviation[2]
+                                # minA = deviation[5]
+                                maxaA = deviation[2]
 
-                        # maxB = deviation[3]
-                        # minB = deviation[6]
+                                # maxB = deviation[3]
+                                # minB = deviation[6]
 
-                        # minDeviation = deviation[4]
-                        maxDeviation = deviation[1]
+                                # minDeviation = deviation[4]
+                                maxDeviation = deviation[1]
 
-                        if maxDeviation < tolerance:
-                            l1 = c1.Length if hasattr(c1, 'Length') else c1.GetLength()
-                            l2 = c2.Length if hasattr(c2, 'Length') else c2.GetLength()
+                                if maxDeviation < tolerance:
+                                    l1 = c1.Length if hasattr(c1, 'Length') else c1.GetLength()
+                                    l2 = c2.Length if hasattr(c2, 'Length') else c2.GetLength()
 
-                            # Keep longer
-                            if l1 > l2:
-                                rs.DeleteObject(obj2)
-                            else:
-                                rs.DeleteObject(obj1)
+                                    # Keep longer
+                                    if l1 > l2:
+                                        rs.DeleteObject(obj2)
+                                    else:
+                                        rs.DeleteObject(obj1)
 
 
 def Make2d():
@@ -596,6 +685,11 @@ def Make2d():
         2. Surface V IsoCurves
     Due to form complexity, rounding issues/floating point mathematics,
     manual correction may be required.
+
+    [1](https://gist.github.com/bengolder/3959792)
+    [2](http://archiologics.com/2011-10-20-15-32-52/rhino-scripts/animation-tools/81-rvb-batch-render-make2d)
+    [3](https://github.com/localcode/rhinopythonscripts/blob/master/Make2D.py)
+    [4](http://docs.mcneel.com/rhino/5/help/en-us/commands/make2d.htm)
     '''
     def run():
         RunScript(
@@ -612,10 +706,16 @@ def Make2d():
         layer('Intersect', 'Curves')
     ]
 
+    rs.CurrentLayer('Default')
+
+    # Hide all Layers
+    for l in rs.LayerNames():
+        if l != 'Default':
+            Visible(l, False)
+
     for view in rs.NamedViews():
         if view != 'Base':
             rs.RestoreNamedView(view)
-            rs.UnselectAllObjects()
 
             # 1. Generate Outlines
             # Generate 2D curves with relaxed tolerance(s) (decrease accuracy)
@@ -623,6 +723,8 @@ def Make2d():
             # to increase coverage and minimise fragmentation.
             for i, tolerance in enumerate((0.1, 0.001)):
                 rs.UnitAbsoluteTolerance(tolerance, True)
+
+                rs.UnselectAllObjects()
 
                 # Select objects
                 for l in baseLayers:
@@ -641,9 +743,7 @@ def Make2d():
                         Transfer(a, b)
                         Visible(view, False)
 
-                PurgeAll('Make2D')
-
-            rs.UnselectAllObjects()
+                PurgeLayer('Make2D')
 
             # 2. Generate IsoCurves
             # Decrease tolerance (increase accuracy)
@@ -654,6 +754,8 @@ def Make2d():
                 isoCurves = layer('Curves', 1, 0, dimension)
                 layers = list(baseLayers)  # copy
                 layers.append(isoCurves)
+
+                rs.UnselectAllObjects()
 
                 # Select objects
                 for l in layers:
@@ -670,13 +772,21 @@ def Make2d():
 
                 Visible(view, False)
                 Visible(isoCurves, False)
-                PurgeAll('Make2D')
+                PurgeLayer('Make2D')
+
+            # 3. Compare and remove overlapping Curves
+            args = {k: [] for k in 'ab'}
 
             for l in baseLayers:
                 for child in ('lines', 'tangents'):
                     a = layer(view, 'visible', child, 0, l)
                     b = layer(view, 'visible', child, 1, l)
 
-                    RemoveOverlappingCurves(*[
-                        rs.ObjectsByLayer(eval(var)) for var in 'ab'
-                    ])
+                    for var in 'ab':
+                        l2 = eval(var)
+
+                        if rs.IsLayer(l2):
+                            Visible(l2, True)
+                            args[var].extend(rs.ObjectsByLayer(l2))
+
+            RemoveOverlappingCurves(*args.values())

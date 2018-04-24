@@ -1,3 +1,4 @@
 import calabi_yau
 
-calabi_yau.SurfaceBuilder.IntersectSurfaces()
+if __name__ == '__main__':
+    calabi_yau.SurfaceBuilder.IntersectSurfaces()

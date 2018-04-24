@@ -1,54 +1,16 @@
-from Rhino import ApplicationSettings
-import rhinoscriptsyntax as rs
-from scriptcontext import doc
-
-import events
 import util
-import calabi_yau as CalabiYau
-from export import Export
+import events
+import calabi_yau
+import macro
 
-reload(util)
-reload(CalabiYau)
+'''
+Uncomment to enable code reloading in development environments:
+```
+    reload(util)
+    reload(calabi_yau)
+```
 
-# Disable Autosave to prevent filesharing conflicts
-rs.EnableAutosave(False)
-
-rs.EnableRedraw(True)
-
-# Configure measurement unit and tolerances
-# [Accuracy](https://www.rhino3d.com/accuracy)
-#
-#         | Absolute     | Relative | Angle
-# --------|--------------|----------|---------
-# Min     | 0.0000000001 | 0.0001   | 0.0001
-# Default | 0.001        | 1.0      | 1.0
-#
-# System: 4
-# AbsoluteTolerance: 0.0000001
-# RelativeTolerance: 0.0
-# AngleTolerance: 0.0
-#
-# When tolerance >= 0.1 silhouette edges are fragmented.
-# Set extreme intolerance to ensure precision.
-
-rs.UnitAbsoluteTolerance(0.0000000001, True)
-rs.UnitRelativeTolerance(0.0, True)
-rs.UnitAngleTolerance(0.0, True)
-# 2  | millimeters
-# 4  | meters
-# 13 | nanometers
-rs.UnitSystem(4, True, True)
-
-# Allow rotation when in Parallel
-ApplicationSettings.ViewSettings.AlwaysPanParallelViews = False
-
-log = file('./log.txt')
-
-if __name__ == '__main__':
-    if rs.GetInteger('Export', 0) != 0:
-        dir = rs.GetString('Destination', '/Users/daniel/Documents/Design/export[REBUILD]')
-        Export(CalabiYau.Batch(dir), cb=None, dir=dir)
-    else:
-        CalabiYau.Run()
-
-log.close()
+Example:
+    `RunPythonScript` `~/lib/macro/build.py`
+    `RunPythonScript` `~/lib/macro/export.py`
+'''
