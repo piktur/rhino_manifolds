@@ -69,8 +69,8 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
   2. Visible `Intersect::Curves`
   3. Rotate model or select the preferred view
   4. Select objects on `PolySurfaces::1` and `Intersect::Curves`
-  5. Set DocumentProperties > Model > Absolute tolerance to `0.1` ![](/1.png)
-  6. Run `Make2D` ![](/2.png)
+  5. Set DocumentProperties > Model > Absolute tolerance to [`0.1`](/1.png)
+  6. Run [`Make2D`](/2.png)
   7. Rename `Make2D` layer
   8. Set DocumentProperties > Model > Absolute tolerance to `0.001`
   9. Run `Make2D`
@@ -112,7 +112,7 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
 
 See template: `~/Applications/Adobe Illustrator CC 2017/Cool Extras/en_GB/Templates/A4_4Div.ait`
 
-Rasterize `File > Export > Export As` `.psd` ![](/3.png)
+Rasterize `File > Export > Export As` [`.psd`](/3.png)
 
 1. Select whitespace on `5-d-4::visible::lines::PolySurfaces::1`
 2. Create a New Layer at bottom of Layer stack
