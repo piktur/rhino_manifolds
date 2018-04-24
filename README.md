@@ -19,9 +19,7 @@ enough information to check that it’s a consistent local
 depiction of the complete manifold and so is still a sufficient
 (although not ideal) representation.
 
-> -- <cite>[Hanson, Andrew J.](https://pdfs.semanticscholar.org/a51f/16741a6452effe2c3773577484fc88948f40.pdf)</cite>
-
-[Additional References](https://www.semanticscholar.org/paper/A-Construction-for-Computer-Visualization-of-Certa-Hanson/8861c0026a89af89b19e9df7267846ec056461c1?citingPapersSort=is-influential&citingPapersLimit=10&citingPapersOffset=10&citedPapersSort=is-influential&citedPapersLimit=10&citedPapersOffset=0)
+-- [Hanson, Andrew J.](https://pdfs.semanticscholar.org/a51f/16741a6452effe2c3773577484fc88948f40.pdf)
 
 ---
 
@@ -126,5 +124,6 @@ Rasterize `File > Export > Export As` [`.psd`](/3.png)
 11. ["Calabi - Yau Manifolds"](https://mathoverflow.net/questions/42707/calabi-yau-manifolds)
 12. ["Dimensions of Time"](http://dimensions-of-time.blogspot.com.au/)
 13. ["Mesh Generation with Python"](http://prideout.net/blog/?p=44)
-14. ["The Elegant Universe", Brian Greene]()
-14. ["The Fabric of the Cosmos", Brian Greene]()
+14. ["The Elegant Universe", Greene, Brian]()
+14. ["The Fabric of the Cosmos", Greene, Brian]()
+15. ["A Construction for Computer Visualization of Certain Complex Curves", Hanson, Andrew J.](https://www.semanticscholar.org/paper/A-Construction-for-Computer-Visualization-of-Certa-Hanson/8861c0026a89af89b19e9df7267846ec056461c1?citingPapersSort=is-influential&citingPapersLimit=10&citingPapersOffset=10&citedPapersSort=is-influential&citedPapersLimit=10&citedPapersOffset=0)
