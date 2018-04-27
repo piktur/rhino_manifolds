@@ -33,43 +33,11 @@ class Config:
     def GetNormalisedDensity(self, i):
         return self.__density__[i]
 
-    def dig(self, attr, *args):
-        '''
-        Retrieves value from deeply nested attribute.
-
-        Example:
-            ```
-            >>> __conf__.isOn('Div', 's', 0, 0)
-            'S_0'
-
-            >>> __conf__.isOn('Div', 's', 0)
-            ['S_0']
-
-            >>> __conf__.isOn(None)
-            None
-        '''
-        try:
-            attr = getattr(self, attr)
-        except TypeError, AttributeError:
-            pass
-
-        for i, key in enumerate(args):
-            if type(attr) == dict and attr.has_key(key):
-                attr = attr[key]
-
-                if i == len(args) - 1:
-                    return attr
-            else:
-                try:
-                    return attr[key]
-                except IndexError:
-                    pass
-
-    def isOn(self, attr, *args):
-        return self.dig(*args)
+    def isOn(self, *args):
+        return util.dig(self, *args)
 
     def isOff(self, *args):
-        return not self.dig(*args)
+        return not isOn(*args)
 
     @staticmethod
     def div1(prefix, *n):
@@ -1345,9 +1313,7 @@ class CurveBuilder(Builder):
                         for div in divisions:
                             curve = patch.Curves[group][subGroup][div]
                             if curve:
-                                id = doc.Objects.AddCurve(curve)
-                                util.rendered(id)
-                                rs.ObjectLayer(id, layer)
+                                id = util.render(curve, layer=layer)
                                 self.Rendered['c'][group][subGroup].append(id)
 
                                 # self.FindCurveCentre(curve, '[' + str(k1) + ',' + str(k2) + ']')
@@ -1414,9 +1380,7 @@ class CurveBuilder(Builder):
             for e in events:
                 if e[0] == 1:
                     for point in e[1:5]:
-                        id = doc.Objects.AddPoint(point)
-                        util.rendered(id)
-                        rs.ObjectLayer(id, 'Intersect::Points')
+                        id = util.render(point, layer='Intersect::Points')
                 else:  # IsOverlap
                     pass
                     # rs.AddPoint(e[1])
@@ -1878,7 +1842,7 @@ class SurfaceBuilder(Builder):
             if direction not in self.Rendered['c'][group][density]:
                 self.Rendered['c'][group][density][direction] = []
 
-            # Cache rendered object id
+            # Cache rendered object idS
             for curve in collection:
                 id = util.render(curve, layer)
 
@@ -1957,7 +1921,7 @@ class SurfaceBuilder(Builder):
                     k1, k2 = patch.Phase
 
                     if geometry in (0, 3):
-                        util.render(obj.Mesh)
+                        id = util.render(obj.Mesh)
 
                     if geometry in (1, 3):
                         # for (u, v) in obj.SubSurfaces[k1][k2].iteritems():
@@ -1966,7 +1930,7 @@ class SurfaceBuilder(Builder):
                         for srf in obj.SubSurfaces:
                             if srf:
                                 layer = util.layer('Surfaces', 'Tile', group)
-                                util.render(srf, layer)
+                                id = util.render(srf, layer)
 
                     if geometry in (2, 3):
                         self.BuildWireframe(
@@ -2122,9 +2086,7 @@ class SurfaceBuilder(Builder):
                         Curves.Add(curve)
 
         for curve in Curves:
-            id = doc.Objects.AddCurve(curve)
-            util.rendered(id)
-            rs.ObjectLayer(id, 'Intersect::Curves')
+            id = util.render(curve, layer='Intersect::Curves')
 
         return Curves
 

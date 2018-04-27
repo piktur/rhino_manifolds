@@ -1,5 +1,13 @@
 # [Calabi Yau](https://bitbucket.org/kunst_dev/snippets)
 
+## TODO
+
+* Improve performance:  
+  * Utilise parallelism
+* Build toolbar for macros
+
+---
+
 A Quintic complex Fermat Surface (power n = 5) is known to provide 10-dimensional String Theory with the 6D Einstein manifold needed for the missing dimensions of Spactime!
 
 Basic String Theory says Spacetime is 10 dimensional; we experience 4 dimensions, 3 in Space and 1 in Time. Quintic (power n = 5) polynomial Calabi Yau space.
@@ -47,6 +55,10 @@ Install [Atom](https://atom.io/). Enable `Python` syntax and install [`linter-ma
 ---
 
 ## Process
+
+> Be patient, these macros may require up to 30 minutes to complete. Performance is affected by tolerance and complexity of the form.
+
+`RunPythonScript` [`__init__.py`](/lib/__init__.py)
 
 ### Generate Intersection Curves
 

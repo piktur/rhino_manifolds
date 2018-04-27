@@ -71,6 +71,39 @@ def __path__(nodes, sep=';'):
     return sep.join([str(n) for n in nodes])
 
 
+def dig(obj, attr, *args):
+    '''
+    Retrieves value from deeply nested attribute
+
+    Example:
+        ```
+        >>> __conf__.isOn('Div', 's', 0, 0)
+        'S_0'
+
+        >>> __conf__.isOn('Div', 's', 0)
+        ['S_0']
+
+        >>> __conf__.isOn(None)
+        None
+    '''
+    try:
+        attr = getattr(obj, attr)
+    except TypeError, AttributeError:
+        pass
+
+    for i, key in enumerate(args):
+        if type(attr) == dict and key in attr:
+            attr = attr[key]
+
+            if i == len(args) - 1:
+                return attr
+        else:
+            try:
+                return attr[key]
+            except IndexError:
+                pass
+
+
 def chunk(arr, size):
     '''
     Yield successive chunks of `size` from `list`.
