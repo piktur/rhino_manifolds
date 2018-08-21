@@ -169,6 +169,7 @@ def Visible(layer, visible=True):
     def toggle(layer):
         id = doc.Layers.FindByFullPath(layer, True)
         layer = doc.Layers[id]
+        # layer.IsLocked = False
         layer.IsVisible = visible
         layer.CommitChanges()
 
@@ -193,7 +194,7 @@ def Transfer(origin, destination):
         rs.AddLayer(destination)
 
     if rs.IsLayer(origin):
-        rs.LayerVisible(origin, True, True)
+        Visible(origin, True)  # rs.LayerVisible(origin, True, True)
 
         for id in rs.ObjectsByLayer(origin, True):
             rs.ObjectLayer(id, destination)
@@ -734,15 +735,21 @@ def Make2d():
             True
         )
 
+        rs.CurrentLayer('Default')
+
+
     baseLayers = [
         layer('PolySurfaces', 1),
         layer('Intersect', 'Curves')
     ]
 
-    rs.CurrentLayer('Default')
+    # Allow user to select required views
+    views = [(view, True) for i, view in enumerate(rs.NamedViews())]
+    result = rs.CheckListBox(views, 'Select Views', 'Make2D')
 
-    for view in rs.NamedViews():
-        if view != 'Base':
+    for view in [item[0] if item[1] else None for item in result]:
+        if view is not None:  # and view != 'Base'
+            rs.CurrentLayer('Default')
             rs.RestoreNamedView(view)
 
             # Hide all Layers
@@ -762,7 +769,7 @@ def Make2d():
                 # Select objects
                 for l in baseLayers:
                     if rs.IsLayer(l):
-                        rs.LayerVisible(l, True, True)
+                        Visible(l, True)  # rs.LayerVisible(l, True, True)
                         rs.ObjectsByLayer(l, True)
 
                 run()
@@ -793,7 +800,7 @@ def Make2d():
                 # Select objects
                 for l in layers:
                     if rs.IsLayer(l):
-                        rs.LayerVisible(l, True, True)
+                        Visible(l, True)  # rs.LayerVisible(l, True, True)
                         rs.ObjectsByLayer(l, True)
 
                 run()
