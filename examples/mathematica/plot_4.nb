@@ -1,4 +1,7 @@
-(*https://mathematica.stackexchange.com/questions/61590/problem-with-old-code-for-a-calabi-yau-manifold*)
+(*
+  Adapted from
+  https://mathematica.stackexchange.com/questions/61590/problem-with-old-code-for-a-calabi-yau-manifold
+*)
 
 z1[θ_, ξ_, n_, k_] := Exp[2 π I k/n] Cosh[ξ + I θ]^(2/n);
 z2[θ_, ξ_, n_, k_] := Exp[2 π I k/n] Sinh[ξ + I θ]^(2/n);

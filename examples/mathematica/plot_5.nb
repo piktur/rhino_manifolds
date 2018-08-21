@@ -1,4 +1,8 @@
-(*https://nylander.wordpress.com/2008/08/25/cross-section-of-the-quintic-calabi-yau-manifold/*)
+(*
+  Copyright Paul Nylander
+  https://nylander.wordpress.com/2008/08/25/cross-section-of-the-quintic-calabi-yau-manifold/
+*)
+
 n = 5
 CalabiYau[z_, k1_, k2_] := Module[
   {

@@ -1,4 +1,7 @@
-(* Translation of [Hanson](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf) *)
+(*
+  Adapted from
+  [Hanson](https://www.cs.indiana.edu/~hansona/papers/CP2-94.pdf)
+*)
 
 cCos[theta_,xi_] := .5(E^(xi + I theta) + E^(- xi - I theta))
 cSin[theta_,xi_] := (-.5 I)(E^(xi + I theta) - E^(- xi - I theta))

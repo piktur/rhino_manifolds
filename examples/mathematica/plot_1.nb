@@ -1,3 +1,5 @@
+(* Adapted from http://demonstrations.wolfram.com/CalabiYauSpace/ *)
+
 Manipulate[
   Show[
     calabi[0, 0, 0, alpha, 0, clr],
